@@ -13,6 +13,9 @@ export interface DraftChoiceInput {
 }
 
 export interface DraftQuestionInput {
+  // ★ เพิ่มใหม่: id ของคำถามเดิมใน DB — null/undefined = คำถามที่เพิ่งเพิ่มใหม่ในฟอร์ม
+  // มีค่า = คำถามเดิมที่ต้องอัปเดตทับ ไม่ใช่ลบทิ้งแล้วสร้างใหม่ (ดูเหตุผลที่ updateLessonDraft)
+  questionId?: string | null;
   questionText: string;
   choices: DraftChoiceInput[];
   timestampSeconds: number | null; // หน้านี้บันทึกเฉพาะควิซแทรกกลางวิดีโอ
@@ -63,6 +66,7 @@ interface StoredDraftChoice {
 }
 
 interface StoredDraftQuestion {
+  id: string;
   question_text: string;
   order_index: number;
   video_timestamp_seconds: number | null;
@@ -269,51 +273,129 @@ async function replaceVideoSegments(
 // หลายคำถามต้องรอ network round-trip หลายรอบสะสมกัน (หลักวินาที) ตอนนี้รวมเป็น batch insert
 // ครั้งเดียว: insert คำถามทั้งหมดพร้อมกันก่อน (ได้ id กลับมาตามลำดับที่ insert) แล้วค่อย insert
 // choices ของทุกคำถามรวมเป็นก้อนเดียวอีกที — ลด round-trip จาก 2n เหลือ 2 ครั้งคงที่
-async function batchInsertQuestions(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  draftId: string,
-  questions: DraftQuestionInput[]
-): Promise<string | null> {
-  const validQuestions = questions
-    .map((q, originalIndex) => ({ q, originalIndex }))
-    .filter(({ q }) => q.questionText.trim());
-
-  if (validQuestions.length === 0) return null;
-
-  // multi_select / drag_drop: ตรวจฝั่ง server ด้วยตัวตรวจกลางเดียวกับฟอร์ม (ข้อมูลจาก client ไม่น่าเชื่อถือ)
-  // และเคารพสวิตช์เปิดใช้ใน config/rollout.ts — ข้อมูลผิดรูปแบบจะทำให้ตัวเล่นใน SCORM สร้างไม่ได้
-  for (const { q, originalIndex } of validQuestions) {
-    if (q.interactionType === "multi_select") {
-      if (!MULTI_SELECT_ENABLED) return "ยังไม่เปิดให้ใช้คำถามแบบ Multiple Select";
-      const problems = validateMultiSelectAuthoring(q.choices.filter((c) => c.text.trim()));
-      if (problems.length > 0) return `คำถามข้อ ${originalIndex + 1} (Multiple Select): ${problems.join(" / ")}`;
-    } else if (q.interactionType === "drag_drop") {
-      if (!DRAG_DROP_ENABLED) return "ยังไม่เปิดให้ใช้คำถามแบบเติมคำ (ลากวาง)";
-      const problems = validateDragDropAuthoring(q.answerData);
-      if (problems.length > 0) return `คำถามข้อ ${originalIndex + 1} (เติมคำ): ${problems.join(" / ")}`;
-    }
+// ★ แยกออกมาจาก batchInsertQuestions เพื่อให้ทางอัปเดตคำถามเดิม (updateExistingQuestions)
+// ใช้ตัวตรวจและรูปแบบคอลัมน์ชุดเดียวกันเป๊ะ ไม่ต้องก๊อปโค้ดไปไว้สองที่แล้วหลุดไม่ตรงกันทีหลัง
+// multi_select / drag_drop: ตรวจฝั่ง server ด้วยตัวตรวจกลางเดียวกับฟอร์ม (ข้อมูลจาก client ไม่น่าเชื่อถือ)
+// และเคารพสวิตช์เปิดใช้ใน config/rollout.ts — ข้อมูลผิดรูปแบบจะทำให้ตัวเล่นใน SCORM สร้างไม่ได้
+function validateQuestionAuthoring(q: DraftQuestionInput, orderIndex: number): string | null {
+  if (q.interactionType === "multi_select") {
+    if (!MULTI_SELECT_ENABLED) return "ยังไม่เปิดให้ใช้คำถามแบบ Multiple Select";
+    const problems = validateMultiSelectAuthoring(q.choices.filter((c) => c.text.trim()));
+    if (problems.length > 0) return `คำถามข้อ ${orderIndex + 1} (Multiple Select): ${problems.join(" / ")}`;
+  } else if (q.interactionType === "drag_drop") {
+    if (!DRAG_DROP_ENABLED) return "ยังไม่เปิดให้ใช้คำถามแบบเติมคำ (ลากวาง)";
+    const problems = validateDragDropAuthoring(q.answerData);
+    if (problems.length > 0) return `คำถามข้อ ${orderIndex + 1} (เติมคำ): ${problems.join(" / ")}`;
   }
+  return null;
+}
 
-  const questionRows = validQuestions.map(({ q, originalIndex }) => ({
-    lesson_draft_id: draftId,
+// คอลัมน์ของแถว quiz_questions (ไม่รวม lesson_draft_id ที่ใส่เฉพาะตอน insert)
+function buildQuestionColumns(q: DraftQuestionInput, orderIndex: number) {
+  return {
     question_text: q.questionText,
-    order_index: originalIndex,
+    order_index: orderIndex,
     video_timestamp_seconds: q.timestampSeconds,
     explanation: q.explanation,
     source_type: q.sourceType ?? "custom",
     source_question_id: q.sourceQuestionId ?? null,
-    // ★ เพิ่มใหม่: ไม่ระบุ = multiple_choice (พฤติกรรมเดิม) — รองรับ true_false/matching/sequencing
-    // ที่เลือกได้ตอนสร้างคำถามใหม่แล้ว
+    // ★ ไม่ระบุ = multiple_choice (พฤติกรรมเดิม) — รองรับ true_false/matching/sequencing
     interaction_type: q.interactionType ?? "multiple_choice",
-    // ===== เพิ่มใหม่: answer_data ของ matching/sequencing (null สำหรับ MC/True-False เหมือนเดิม) =====
+    // answer_data ของ matching/sequencing/drag_drop (null สำหรับ MC/True-False เหมือนเดิม)
     answer_data:
       q.interactionType === "matching" || q.interactionType === "sequencing" || q.interactionType === "drag_drop"
         ? q.answerData ?? null
         : null,
     image_url: q.imageUrl ?? null,
-    // ===== เพิ่มใหม่: คำบรรยายใต้ภาพ + หมุดตัวเลข — ไม่มีรูปก็ไม่มีความหมาย แต่บันทึกไว้เฉยๆไม่เป็นไร =====
+    // คำบรรยายใต้ภาพ + หมุดตัวเลข — ไม่มีรูปก็ไม่มีความหมาย แต่บันทึกไว้เฉยๆไม่เป็นไร
     image_caption: q.imageCaption ?? null,
     image_pins: q.imagePins ?? null,
+  };
+}
+
+// matching/sequencing/drag_drop ไม่มี quiz_choices เลย (เฉลยอยู่ใน answer_data) — กันไว้ชัดๆ
+// ไม่ให้พึ่งพาแค่ว่า client ส่ง choices ว่างมาเท่านั้น
+function buildChoiceRows(q: DraftQuestionInput, questionId: string) {
+  if (q.interactionType === "matching" || q.interactionType === "sequencing" || q.interactionType === "drag_drop") {
+    return [];
+  }
+  return q.choices
+    .filter((c) => c.text.trim())
+    .map((c, cIndex) => ({
+      question_id: questionId,
+      choice_text: c.text,
+      is_correct: c.isCorrect,
+      order_index: cIndex,
+    }));
+}
+
+// ★ อัปเดตคำถามเดิมทับที่เดิม โดย id ของคำถามไม่เปลี่ยน
+// เหตุผล: แพ็กเกจ SCORM ที่นักเรียนเรียนอยู่อ้าง id ของคำถาม และ video_quiz_attempts.question_id
+// ก็ผูกกับ id นี้แบบ ON DELETE CASCADE ถ้าลบคำถามเก่าทิ้งทุกครั้งที่ครูกดบันทึก คำตอบที่นักเรียน
+// เคยทำไว้จะหายตามไปด้วยทั้งหมด
+// หมายเหตุ: quiz_choices ลบแล้วใส่ใหม่ได้ เพราะไม่มีตารางไหนอ้างถึง quiz_choices.id เลย
+// (คำตอบนักเรียนเก็บเป็น selected_choice_index ซึ่งเป็นเลขลำดับ ไม่ใช่ id)
+async function updateExistingQuestions(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  draftId: string,
+  entries: { question: DraftQuestionInput; orderIndex: number; questionId: string }[]
+): Promise<string | null> {
+  // ตรวจให้ครบทุกข้อก่อน ค่อยเริ่มเขียน DB — จะได้ไม่เขียนไปครึ่งทางแล้วเจอข้อเสียทีหลัง
+  for (const { question, orderIndex } of entries) {
+    const invalid = validateQuestionAuthoring(question, orderIndex);
+    if (invalid) return invalid;
+  }
+
+  for (const { question, orderIndex, questionId } of entries) {
+    const { error: updateError } = await supabase
+      .from("quiz_questions")
+      .update(buildQuestionColumns(question, orderIndex))
+      .eq("id", questionId)
+      .eq("lesson_draft_id", draftId);
+    if (updateError) {
+      console.error("updateExistingQuestions (question):", updateError.message);
+      return "อัปเดตคำถามไม่สำเร็จ กรุณาลองใหม่";
+    }
+
+    const deleteChoicesError = await deleteWithRetry(() =>
+      supabase.from("quiz_choices").delete().eq("question_id", questionId)
+    );
+    if (deleteChoicesError) return "อัปเดตตัวเลือกคำตอบไม่สำเร็จ กรุณาลองใหม่";
+
+    const choiceRows = buildChoiceRows(question, questionId);
+    if (choiceRows.length > 0) {
+      const { error: choicesError } = await supabase.from("quiz_choices").insert(choiceRows);
+      if (choicesError) {
+        console.error("updateExistingQuestions (choices):", choicesError.message);
+        return "บันทึกตัวเลือกไม่สำเร็จ กรุณาลองใหม่";
+      }
+    }
+  }
+  return null;
+}
+
+async function batchInsertQuestions(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  draftId: string,
+  // ★ เปลี่ยนจาก DraftQuestionInput[] เป็นคู่ของคำถามกับลำดับข้อจริง เพราะตอนนี้ฟังก์ชันนี้อาจได้รับ
+  // เฉพาะ "ข้อที่เพิ่มใหม่" ซึ่งอยู่กระจายกลางๆ รายการ ลำดับข้อจึงต้องส่งมาตรงๆ ไม่ใช่นับจาก index
+  // ของ array ที่ส่งเข้ามา (ไม่งั้น order_index จะชนกับข้อเดิมที่ยังอยู่)
+  entries: { question: DraftQuestionInput; orderIndex: number }[]
+): Promise<string | null> {
+  const validQuestions = entries
+    .map(({ question, orderIndex }) => ({ q: question, originalIndex: orderIndex }))
+    .filter(({ q }) => q.questionText.trim());
+
+  if (validQuestions.length === 0) return null;
+
+  for (const { q, originalIndex } of validQuestions) {
+    const invalid = validateQuestionAuthoring(q, originalIndex);
+    if (invalid) return invalid;
+  }
+
+  const questionRows = validQuestions.map(({ q, originalIndex }) => ({
+    lesson_draft_id: draftId,
+    ...buildQuestionColumns(q, originalIndex),
   }));
   const orderIndexes = questionRows.map((r) => r.order_index);
 
@@ -357,17 +439,7 @@ async function batchInsertQuestions(
   const choiceRows = validQuestions.flatMap(({ q, originalIndex }) => {
     const questionId = idByOrderIndex.get(originalIndex);
     if (!questionId) return [];
-    // ===== เพิ่มใหม่: matching/sequencing ไม่มี quiz_choices เลย (เฉลยอยู่ใน answer_data ที่ insert
-    // ไปแล้วข้างบน) — กันไว้ชัดๆ ไม่ให้พึ่งพาแค่ว่า client ส่ง choices ว่างมาเท่านั้น
-    if (q.interactionType === "matching" || q.interactionType === "sequencing" || q.interactionType === "drag_drop") return [];
-    return q.choices
-      .filter((c) => c.text.trim())
-      .map((c, cIndex) => ({
-        question_id: questionId,
-        choice_text: c.text,
-        is_correct: c.isCorrect,
-        order_index: cIndex,
-      }));
+    return buildChoiceRows(q, questionId);
   });
 
   if (choiceRows.length === 0) return null;
@@ -478,7 +550,12 @@ export async function saveLessonDraft(input: SaveLessonDraftInput): Promise<Save
   if (segmentError) return { error: segmentError };
 
   // 4. สร้างคำถาม + ตัวเลือก (batch insert ครั้งเดียว แทนการวนลูป)
-  const questionsError = await batchInsertQuestions(supabase, draft.id, input.questions);
+  // บทใหม่ = คำถามเป็นของใหม่ทั้งหมด ลำดับข้อจึงเท่ากับตำแหน่งใน array ตรงๆ
+  const questionsError = await batchInsertQuestions(
+    supabase,
+    draft.id,
+    input.questions.map((question, orderIndex) => ({ question, orderIndex }))
+  );
   if (questionsError) return { error: questionsError };
 
   // 5. สร้าง marker แบบสุ่มจากคลัง (bank_random) — ไม่มีเนื้อหาคำถาม ผูกแค่เงื่อนไข
@@ -524,6 +601,9 @@ export interface ExistingDraftData {
     confidence: number | null;
   }>;
   questions: {
+    // ★ เพิ่มใหม่: ส่ง id ของคำถามเดิมกลับไปให้ฟอร์มถือไว้ เพื่อให้ตอนบันทึกส่งกลับมาได้ว่าข้อนี้
+    // คือข้อเดิม ไม่ใช่ข้อใหม่ (ดูเหตุผลที่ updateLessonDraft)
+    questionId: string;
     questionText: string;
     timestampSeconds: number | null;
     explanation: string | null;
@@ -568,7 +648,7 @@ export async function getLessonDraftForEdit(lessonId: string, courseId?: string)
     .from("lesson_drafts")
     .select(
       `id, video_url, content_html, status,
-       quiz_questions ( question_text, order_index, video_timestamp_seconds, explanation, source_type, source_question_id, interaction_type, answer_data, image_url, image_caption, image_pins,
+       quiz_questions ( id, question_text, order_index, video_timestamp_seconds, explanation, source_type, source_question_id, interaction_type, answer_data, image_url, image_caption, image_pins,
          quiz_choices ( choice_text, is_correct, order_index ) )`
     )
     .eq("lesson_id", lessonId)
@@ -599,6 +679,7 @@ export async function getLessonDraftForEdit(lessonId: string, courseId?: string)
   const questions = storedQuestions
     .sort((a, b) => a.order_index - b.order_index)
     .map((q) => ({
+      questionId: q.id,
       questionText: q.question_text,
       timestampSeconds: q.video_timestamp_seconds,
       explanation: q.explanation,
@@ -718,11 +799,11 @@ export async function updateLessonDraft(input: {
   );
   if (segmentError) return { error: segmentError };
 
-  // ★ แก้ตามแผน A: จำ id คำถามเก่าไว้ก่อน แล้วค่อย insert คำถามใหม่ "ก่อน" ลบของเก่า
-  // เดิมลบก่อนแล้วค่อย insert — ถ้า insert พังกลางทาง (timeout/RLS ชั่วคราว) draft จะเหลือ
-  // คำถาม 0 ข้อ ตอนนี้สลับลำดับ: ถ้า insert ใหม่พัง ของเก่ายังอยู่ครบ ไม่มีอะไรหาย
-  // (อย่างแย่สุดถ้าลบของเก่าไม่สำเร็จหลัง insert ใหม่แล้ว จะเหลือคำถามซ้ำซ้อนชั่วคราว
-  // ซึ่งกู้คืนได้ง่ายกว่าคำถามหายไปเลย)
+  // ★ คำถามควิซ: คง id ของคำถามเดิมไว้ แทนการลบทิ้งทั้งหมดแล้วสร้างใหม่ทุกครั้งแบบเดิม
+  // เหตุผลเดียวกับหมุดควิซด้านล่าง: video_quiz_attempts.question_id ผูกกับ quiz_questions.id
+  // แบบ ON DELETE CASCADE ถ้า id เปลี่ยนทุกครั้งที่ครูกดบันทึก (แม้แก้แค่ชื่อบท) คำตอบที่นักเรียน
+  // เคยทำไว้จะถูกลบหายไปทั้งหมด และแพ็กเกจ SCORM เก่าที่อ้าง id เดิมก็บันทึกสถิติไม่ได้อีก
+  // ฟอร์มส่ง questionId ของข้อเดิมกลับมาให้แล้ว (ดู DraftQuestionInput)
   const { data: oldQuestions, error: oldQuestionsFetchError } = await supabase
     .from("quiz_questions")
     .select("id")
@@ -731,21 +812,47 @@ export async function updateLessonDraft(input: {
 
   if (oldQuestionsFetchError) return { error: "ตรวจสอบคำถามเดิมไม่สำเร็จ กรุณาลองใหม่" };
 
-  const oldQuestionIds = (oldQuestions ?? []).map((q) => q.id);
+  const oldQuestionIds: string[] = (oldQuestions ?? []).map((q) => q.id as string);
+  const keptQuestionIds: string[] = [];
+  const questionUpdates: { question: DraftQuestionInput; orderIndex: number; questionId: string }[] = [];
+  const questionInserts: { question: DraftQuestionInput; orderIndex: number }[] = [];
 
-  const questionsError = await batchInsertQuestions(supabase, input.draftId, input.questions);
+  input.questions.forEach((question, orderIndex) => {
+    // ข้อที่ข้อความว่าง = ถือว่าครูเอาออก (พฤติกรรมเดิมคือถูก filter ทิ้งตอน insert อยู่แล้ว)
+    if (!question.questionText.trim()) return;
+    // เช็กด้วยว่า questionId ที่ส่งมาเป็นของ draft นี้จริง กันค่าแปลกปลอมจากฝั่ง client
+    if (question.questionId && oldQuestionIds.includes(question.questionId)) {
+      keptQuestionIds.push(question.questionId);
+      questionUpdates.push({ question, orderIndex, questionId: question.questionId });
+    } else {
+      questionInserts.push({ question, orderIndex });
+    }
+  });
+
+  const updateQuestionsError = await updateExistingQuestions(supabase, input.draftId, questionUpdates);
+  if (updateQuestionsError) return { error: updateQuestionsError };
+
+  // insert ข้อใหม่ "ก่อน" ลบข้อที่เอาออก — ถ้า insert พังกลางทาง ของเก่ายังอยู่ครบ ไม่มีอะไรหาย
+  // (อย่างแย่สุดคือเหลือข้อซ้ำซ้อนชั่วคราว ซึ่งกู้คืนง่ายกว่าคำถามหายไปเลย)
+  const questionsError = await batchInsertQuestions(supabase, input.draftId, questionInserts);
   if (questionsError) return { error: questionsError };
 
-  if (oldQuestionIds.length > 0) {
-  const deleteErr = await deleteWithRetry(() =>
-    supabase.from("quiz_questions").delete().in("id", oldQuestionIds)
-  );
-  if (deleteErr) {
-    return { error: "บันทึกคำถามใหม่สำเร็จ แต่ลบคำถามเก่าไม่สำเร็จ กรุณากดบันทึกอีกครั้งเพื่อล้างข้อมูลซ้ำ" };
+  const removedQuestionIds = oldQuestionIds.filter((id) => !keptQuestionIds.includes(id));
+  if (removedQuestionIds.length > 0) {
+    const deleteErr = await deleteWithRetry(() =>
+      supabase.from("quiz_questions").delete().in("id", removedQuestionIds)
+    );
+    if (deleteErr) {
+      return { error: "บันทึกคำถามใหม่สำเร็จ แต่ลบคำถามที่เอาออกไม่สำเร็จ กรุณากดบันทึกอีกครั้งเพื่อล้างข้อมูลซ้ำ" };
+    }
   }
-}
 
-  // ★ เดียวกับด้านบน: insert หมุดควิซแบบสุ่มใหม่ก่อน ค่อยลบของเก่าทีหลัง
+  // ★ หมุดควิซแบบสุ่ม: คง id เดิมไว้ แทนการลบทิ้งแล้วสร้างใหม่ทุกครั้งแบบเดิม
+  // เหตุผล: แพ็กเกจ SCORM ที่นักเรียนกำลังเรียนอยู่อ้างถึง id ของหมุดโดยตรง ถ้า id เปลี่ยนทุกครั้ง
+  // ที่ครูกดบันทึก (แม้แก้แค่ชื่อบท) หมุดในแพ็กเกจเก่าจะหาไม่เจอ ขึ้น "โหลดคำถามไม่สำเร็จ" และ
+  // คำตอบที่นักเรียนเคยทำไว้จะถูกลบตาม cascade ของ video_quiz_attempts.marker_id ไปด้วย
+  // ฟอร์มส่ง markerId ของหมุดเดิมกลับมาอยู่แล้ว (ดู DraftRandomMarkerInput) จึงแยกได้ว่าอันไหน
+  // อัปเดตของเดิม อันไหนปักใหม่ และลบเฉพาะอันที่ครูเอาออกจริงๆ
   const { data: oldMarkers, error: oldMarkersFetchError } = await supabase
     .from("video_quiz_markers")
     .select("id")
@@ -753,25 +860,69 @@ export async function updateLessonDraft(input: {
 
   if (oldMarkersFetchError) return { error: "ตรวจสอบหมุดควิซเดิมไม่สำเร็จ กรุณาลองใหม่" };
 
-  const oldMarkerIds = (oldMarkers ?? []).map((m) => m.id);
+  const oldMarkerIds: string[] = (oldMarkers ?? []).map((m) => m.id as string);
+  const keptMarkerIds: string[] = [];
+  const markerUpdates: { id: string; timestampSeconds: number; difficulty: string; orderIndex: number }[] = [];
+  const markerInserts: {
+    lesson_draft_id: string;
+    lesson_id: string;
+    timestamp_seconds: number;
+    random_difficulty: string;
+    order_index: number;
+  }[] = [];
 
-    if (input.randomMarkers.length > 0) {
-    const markerRows = input.randomMarkers.map((m, idx) => ({
-      lesson_draft_id: input.draftId,
-      lesson_id: input.lessonId,
-      timestamp_seconds: m.timestampSeconds,
-      random_difficulty: m.difficulty,
-      order_index: idx,
-    }));
-    const { error: markersError } = await supabase.from("video_quiz_markers").insert(markerRows);
-    if (markersError) return { error: "บันทึกหมุดควิซแบบสุ่มไม่สำเร็จ" };
+  input.randomMarkers.forEach((m, idx) => {
+    // เช็กด้วยว่า markerId ที่ส่งมาเป็นของ draft นี้จริง กันกรณีค่าแปลกปลอมหลุดมาจากฝั่ง client
+    if (m.markerId && oldMarkerIds.includes(m.markerId)) {
+      keptMarkerIds.push(m.markerId);
+      markerUpdates.push({
+        id: m.markerId,
+        timestampSeconds: m.timestampSeconds,
+        difficulty: m.difficulty,
+        orderIndex: idx,
+      });
+    } else {
+      markerInserts.push({
+        lesson_draft_id: input.draftId,
+        lesson_id: input.lessonId,
+        timestamp_seconds: m.timestampSeconds,
+        random_difficulty: m.difficulty,
+        order_index: idx,
+      });
+    }
+  });
+
+  // อัปเดตหมุดเดิมทีละตัว — หนึ่งบทมีหมุดไม่กี่ตัว และตาราง video_quiz_markers ไม่มี unique
+  // constraint ใดๆ (มีแค่ PK กับ FK) จึงสลับลำดับ/เวลากันไปมาได้โดยไม่ชนกันเองระหว่างทาง
+  for (const row of markerUpdates) {
+    const { error: updateMarkerError } = await supabase
+      .from("video_quiz_markers")
+      .update({
+        timestamp_seconds: row.timestampSeconds,
+        random_difficulty: row.difficulty,
+        order_index: row.orderIndex,
+      })
+      .eq("id", row.id)
+      .eq("lesson_draft_id", input.draftId);
+    if (updateMarkerError) {
+      console.error("Failed to update marker:", updateMarkerError.message);
+      return { error: "อัปเดตหมุดควิซแบบสุ่มไม่สำเร็จ" };
+    }
   }
 
-  if (oldMarkerIds.length > 0) {
-    const { error: deleteMarkersError } = await supabase.from("video_quiz_markers").delete().in("id", oldMarkerIds);
+  if (markerInserts.length > 0) {
+    const insertMarkersError = await insertMarkersWithRetry(supabase, input.draftId, markerInserts);
+    if (insertMarkersError) return { error: insertMarkersError };
+  }
+
+  // ลบเฉพาะหมุดที่ครูเอาออกจริง (ไม่ได้ถูกส่งกลับมาในรอบนี้) — หมุดที่ยังอยู่ id จะไม่เปลี่ยน
+  const removedMarkerIds = oldMarkerIds.filter((id) => !keptMarkerIds.includes(id));
+  if (removedMarkerIds.length > 0) {
+    const deleteMarkersError = await deleteWithRetry(() =>
+      supabase.from("video_quiz_markers").delete().in("id", removedMarkerIds)
+    );
     if (deleteMarkersError) {
-      console.error("Failed to delete old markers:", deleteMarkersError.message);
-      return { error: "บันทึกหมุดควิซใหม่สำเร็จ แต่ลบหมุดเก่าไม่สำเร็จ กรุณากดบันทึกอีกครั้งเพื่อล้างข้อมูลซ้ำ" };
+      return { error: "บันทึกหมุดควิซใหม่สำเร็จ แต่ลบหมุดที่เอาออกไม่สำเร็จ กรุณากดบันทึกอีกครั้ง" };
     }
   }
 

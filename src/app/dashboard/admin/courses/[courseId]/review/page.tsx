@@ -187,7 +187,7 @@ export default async function AdminCourseReviewPage({
 
   if (!user) redirect(`/login?redirect=/admin/courses/${courseId}/review`);
 
-  const [profileRes, courseRes, certificateRes] = await Promise.all([
+  const [profileRes, courseRes, certificateRes, examReviewRes] = await Promise.all([
     supabase.from("profiles").select("role").eq("id", user.id).maybeSingle(),
     supabase
       .from("courses")
@@ -216,7 +216,23 @@ export default async function AdminCourseReviewPage({
       .select("certificate_enabled, certificate_pass_percentage, certificate_title, certificate_description, certificate_logo_path, certificate_issuer_name, certificate_signatory_name, certificate_signatory_title")
       .eq("id", courseId)
       .maybeSingle(),
+    // อ่านอย่างเดียวเพื่อแสดงสถานะบททดสอบท้ายคอร์ส — แยก query ไว้ ถ้าดึงไม่สำเร็จก็แค่ไม่โชว์ป้าย
+    supabase
+      .from("courses")
+      .select("exam_status")
+      .eq("id", courseId)
+      .maybeSingle(),
   ]);
+
+  const examStatus = (examReviewRes.data?.exam_status ?? null) as "pending" | "approved" | "rejected" | null;
+  const examStatusChip =
+    examStatus === "rejected"
+      ? { text: "ถูกตีกลับ", className: "bg-[#FF5A3C]/10 text-[#EB4A2D]" }
+      : examStatus === "approved"
+        ? { text: "อนุมัติแล้ว", className: "bg-emerald-50 text-emerald-700" }
+        : examStatus === "pending"
+          ? { text: "รอตรวจสอบ", className: "bg-amber-50 text-amber-700" }
+          : null;
 
   if (profileRes.data?.role !== "admin") redirect("/");
 
@@ -267,8 +283,34 @@ export default async function AdminCourseReviewPage({
             <h1 className="mb-2 text-[24px] font-extrabold tracking-[-0.02em] text-[#0F1B3D]">
               {course.title}
             </h1>
-            <p className="text-[13px] text-[#0F1B3D]/50">
-              {lessonsWithDraft.length} บทเรียน สถานะคอร์ส: {COURSE_STATUS_LABEL[course.status] ?? course.status}
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-[#0F1B3D]/50">
+              <span className="inline-flex items-center gap-1.5">
+                {lessonsWithDraft.length} บทเรียน · สถานะคอร์ส:
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                    course.status === "pending"
+                      ? "bg-amber-50 text-amber-700"
+                      : course.status === "published"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : course.status === "rejected"
+                          ? "bg-[#FF5A3C]/10 text-[#EB4A2D]"
+                          : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {COURSE_STATUS_LABEL[course.status] ?? course.status}
+                </span>
+              </span>
+              {examStatusChip && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    บททดสอบท้ายคอร์ส:
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ${examStatusChip.className}`}>
+                      {examStatusChip.text}
+                    </span>
+                  </span>
+                </>
+              )}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -276,6 +318,38 @@ export default async function AdminCourseReviewPage({
             <Link href={`/dashboard/admin/courses/${course.id}/exam`} className="rounded-full border border-[#0F1B3D]/15 bg-white px-4 py-2 text-[12.5px] font-bold text-[#0F1B3D]">ตรวจบททดสอบท้ายคอร์ส</Link>
           </div>
         </div>
+
+        {(examStatus === "rejected" || examStatus === "pending") && (
+          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-[#0F1B3D]/10 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,27,61,0.04)]">
+            <span
+              className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                examStatus === "rejected" ? "bg-[#FF5A3C]/12 text-[#FF5A3C]" : "bg-amber-50 text-amber-600"
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                {examStatus === "rejected" ? (
+                  <>
+                    <path d="M3 12a9 9 0 1 0 3-6.7" />
+                    <path d="M3 4v5h5" />
+                  </>
+                ) : (
+                  <>
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 7v5l3 2" />
+                  </>
+                )}
+              </svg>
+            </span>
+            <p className="min-w-0 flex-1 text-[12.5px] leading-6 text-[#0F1B3D]/65">
+              {examStatus === "rejected"
+                ? "บททดสอบท้ายคอร์สถูกตีกลับ รอครูแก้ไขและส่งตรวจใหม่ จึงยังอนุมัติทั้งคอร์สไม่ได้"
+                : "บททดสอบท้ายคอร์สยังไม่ได้รับการอนุมัติ จึงยังอนุมัติทั้งคอร์สไม่ได้ กรุณาตรวจบททดสอบก่อน"}{" "}
+              <Link href={`/dashboard/admin/courses/${course.id}/exam`} className="font-bold text-[#FF5A3C] hover:text-[#EB4A2D]">
+                ไปที่บททดสอบ
+              </Link>
+            </p>
+          </div>
+        )}
 
         <CourseApproveActions
           courseId={course.id}

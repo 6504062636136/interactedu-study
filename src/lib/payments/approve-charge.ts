@@ -16,7 +16,7 @@ function courseData(row: EnrollmentRow): { title: string; price: number | string
   const course = Array.isArray(row.courses) ? row.courses[0] : row.courses;
   return course ?? null;
 }
-
+//join ไปตาราง courses (ดึง title กับ price ของคอร์สนั้นมาด้วยในคราวเดียว ผ่าน foreign key relationship)
 export async function approveEnrollmentForCharge(chargeId: string): Promise<boolean> {
   const supabase = createAdminClient();
   const { data, error } = await supabase

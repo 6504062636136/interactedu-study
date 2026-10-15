@@ -76,7 +76,7 @@ export default async function CourseExamManagementPage({ courseId, workspace }: 
       .limit(1, { referencedTable: "lesson_drafts" }).retry(false),
     supabase.from("course_exam_configs").select("custom_constraints").eq("course_id", courseId).maybeSingle().retry(false),
     workspace === "admin"
-      ? supabase.from("courses").select("exam_status").eq("id", courseId).maybeSingle().retry(false)
+      ? supabase.from("courses").select("exam_status, exam_rejection_reason").eq("id", courseId).maybeSingle().retry(false)
       : Promise.resolve({ data: null, error: null }),
   ]);
 
@@ -122,6 +122,61 @@ export default async function CourseExamManagementPage({ courseId, workspace }: 
       <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#FF5A3C]">Final assessment</p>
       <h1 className="mt-1 text-[26px] font-extrabold tracking-[-0.02em] text-[#0F1B3D]">บททดสอบท้ายคอร์ส</h1>
       <p className="mt-1 text-sm font-semibold text-[#0F1B3D]/65">{course.title}</p>
+      {examReview?.exam_status && (
+        <div className="mt-4 flex items-start gap-3.5 rounded-2xl border border-[#0F1B3D]/10 bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(15,27,61,0.04)]">
+          <span
+            className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+              examReview.exam_status === "rejected"
+                ? "bg-[#FF5A3C]/12 text-[#FF5A3C]"
+                : examReview.exam_status === "approved"
+                  ? "bg-[#00B37E]/12 text-[#00B37E]"
+                  : "bg-amber-50 text-amber-600"
+            }`}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {examReview.exam_status === "rejected" ? (
+                <>
+                  <path d="M3 12a9 9 0 1 0 3-6.7" />
+                  <path d="M3 4v5h5" />
+                </>
+              ) : examReview.exam_status === "approved" ? (
+                <path d="M5 13l4 4L19 7" />
+              ) : (
+                <>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3 2" />
+                </>
+              )}
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[12px] font-semibold text-slate-500">สถานะบททดสอบ:</span>
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                  examReview.exam_status === "rejected"
+                    ? "bg-[#FF5A3C]/10 text-[#EB4A2D]"
+                    : examReview.exam_status === "approved"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-amber-50 text-amber-700"
+                }`}
+              >
+                {examReview.exam_status === "rejected" ? "ถูกตีกลับ" : examReview.exam_status === "approved" ? "อนุมัติแล้ว" : "รอตรวจสอบ"}
+              </span>
+            </div>
+            {examReview.exam_status === "rejected" && (
+              <>
+                <p className="mt-1.5 text-[12.5px] leading-6 text-[#0F1B3D]/65">บททดสอบนี้ถูกตีกลับแล้ว รอครูแก้ไขและส่งตรวจใหม่</p>
+                {examReview.exam_rejection_reason && (
+                  <p className="mt-2 rounded-xl bg-[#FF5A3C]/[0.06] px-3 py-2 text-[12px] leading-5 text-[#0F1B3D]/70">
+                    <span className="font-bold text-[#EB4A2D]">เหตุผล:</span> {examReview.exam_rejection_reason}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
       <div className="my-6 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-[13px] leading-6 text-blue-800">
         ผู้เรียนจะทำบททดสอบนี้หลังเรียนครบทุกบท และต้องได้อย่างน้อย <strong>{certificatePassPercentage}%</strong> เพื่อรับใบรับรอง {certificateEnabled ? "(เปิดใช้งานใบรับรองแล้ว)" : "(ขณะนี้ปิดการออกใบรับรอง)"}
       </div>
