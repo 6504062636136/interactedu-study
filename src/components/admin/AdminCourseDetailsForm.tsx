@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import CourseOverview, { type CourseOverviewDetails } from "./CourseOverview";
 import { useCourseWorkspaceSave } from "@/components/courses/CourseWorkspaceSave";
+import { CATEGORIES } from "@/lib/constants/categories";
+
+const OTHER_CATEGORY_LABEL = "อื่นๆ" as const;
 
 interface AdminCourseDetailsFormProps {
   courseId: string;
@@ -44,6 +47,10 @@ export default function AdminCourseDetailsForm({
   const [title, setTitle] = useState(initialTitle);
   const [courseCode, setCourseCode] = useState(initialCourseCode ?? "");
   const [category, setCategory] = useState(initialCategory ?? "");
+  // ช่องกรอกหมวดแบบกำหนดเองเมื่อเลือก "อื่นๆ" — ไม่งั้นค่าหมวดจะถูกบันทึกเป็น "อื่นๆ" ตรงๆ
+  // ว่างเปล่าไม่สื่อความหมาย จึงต้องบังคับให้พิมพ์ชื่อหมวดจริงแทน
+  const [customCategory, setCustomCategory] = useState("");
+  const [customCategoryError, setCustomCategoryError] = useState<string | null>(null);
   const [description, setDescription] = useState(initialDescription ?? "");
   const [isFree, setIsFree] = useState(initialPrice === 0);
   const [price, setPrice] = useState(String(initialPrice));
@@ -65,6 +72,8 @@ export default function AdminCourseDetailsForm({
       setTitle(savedDetails.title);
       setCourseCode(savedDetails.courseCode ?? "");
       setCategory(savedDetails.category ?? "");
+      setCustomCategory("");
+      setCustomCategoryError(null);
       setDescription(savedDetails.description ?? "");
       setIsFree(savedDetails.price === 0);
       setPrice(String(savedDetails.price));
@@ -110,6 +119,15 @@ export default function AdminCourseDetailsForm({
       return false;
     }
 
+    // เลือก "อื่นๆ" แล้วต้องกรอกชื่อหมวดจริง ไม่งั้นหมวดวิชาจะถูกบันทึกเป็น "อื่นๆ" เฉยๆ
+    // แสดง error เฉพาะจุดใต้ช่องกรอก (ไม่ใช้ native browser validation tooltip)
+    if (category === OTHER_CATEGORY_LABEL && !customCategory.trim()) {
+      setCustomCategoryError("กรุณาระบุชื่อหมวดวิชา");
+      return false;
+    }
+    setCustomCategoryError(null);
+    const categoryToSave = category === OTHER_CATEGORY_LABEL ? customCategory.trim() : category;
+
     setSaving(true);
 
     try {
@@ -131,7 +149,7 @@ export default function AdminCourseDetailsForm({
         body: JSON.stringify({
           title,
           courseCode,
-          category,
+          category: categoryToSave,
           description,
           price: isFree ? 0 : Number(price),
           coverImageUrl: nextCoverUrl,
@@ -162,6 +180,8 @@ export default function AdminCourseDetailsForm({
       setTitle(updated.title);
       setCourseCode(updated.course_code);
       setCategory(updated.category);
+      setCustomCategory("");
+      setCustomCategoryError(null);
       setDescription(updated.description ?? "");
       setPrice(String(updated.price));
       setIsFree(Number(updated.price) === 0);
@@ -227,8 +247,51 @@ export default function AdminCourseDetailsForm({
             </label>
             <label className="sm:col-span-2">
               <span className={labelClass}>หมวดวิชา</span>
-              <input required maxLength={100} value={category} onChange={(event) => setCategory(event.target.value)} className={inputClass} />
+              <select
+                required
+                value={category}
+                onChange={(event) => {
+                  setCategory(event.target.value);
+                  setCustomCategoryError(null);
+                }}
+                className={inputClass}
+              >
+                <option value="" disabled>
+                  เลือกหมวดวิชา
+                </option>
+                {/* เผื่อข้อมูลเดิมของคอร์สเป็นหมวดที่ไม่อยู่ในลิสต์ปัจจุบันแล้ว (ถูกลบ/เปลี่ยนชื่อ)
+                    ยังคงต้องมีตัวเลือกนี้ไว้ ไม่งั้น default value จะไม่ตรงกับหมวดเดิมของคอร์ส */}
+                {category && !(CATEGORIES as readonly string[]).includes(category) && (
+                  <option value={category}>{category}</option>
+                )}
+                {CATEGORIES.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
             </label>
+            {category === OTHER_CATEGORY_LABEL && (
+              <label className="sm:col-span-2">
+                <span className={labelClass}>ระบุหมวดวิชา</span>
+                <input
+                  maxLength={100}
+                  value={customCategory}
+                  onChange={(event) => {
+                    setCustomCategory(event.target.value);
+                    if (customCategoryError) setCustomCategoryError(null);
+                  }}
+                  placeholder="พิมพ์ชื่อหมวดวิชา เช่น กีฬาและการออกกำลังกาย"
+                  aria-invalid={customCategoryError ? true : undefined}
+                  className={`${inputClass} ${customCategoryError ? "!border-red-400 focus:!border-red-500" : ""}`}
+                />
+                {customCategoryError && (
+                  <p role="alert" className="mt-1.5 text-xs font-semibold text-red-600">
+                    {customCategoryError}
+                  </p>
+                )}
+              </label>
+            )}
           </div>
 
           <label className="block">
