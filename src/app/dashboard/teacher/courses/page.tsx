@@ -9,34 +9,38 @@ import CourseLifecycleButton from "@/components/courses/CourseLifecycleButton";
 const supabase = createClient();
 
 type LessonDraftStatus = "draft" | "pending_review" | "approved" | "rejected";
-type StatusFilter = "all" | LessonDraftStatus;
+// สถานะจริงของคอร์ส (ตาราง courses) — ต้องตรงกับหน้า /dashboard/teacher ที่ใช้ชุดเดียวกัน
+// ไม่ใช่สถานะของ lesson_draft ซึ่งเป็นคนละชุดค่าและทำให้ป้ายสถานะไม่ตรงกันระหว่างสองหน้า
+type CourseStatus = "draft" | "pending" | "published" | "rejected" | "archived";
+type StatusFilter = "all" | CourseStatus;
 
 interface CourseRow {
   id: string;
   title: string;
   price: number;
-  status: string;
+  status: CourseStatus;
   lessonCount: number;
   studentCount: number;
-  latestStatus: LessonDraftStatus | null;
   latestRejectionReason: string | null;
 }
 
-const STATUS_LABEL: Record<LessonDraftStatus, string> = {
+const STATUS_LABEL: Record<CourseStatus, string> = {
   draft: "แบบร่าง",
-  pending_review: "รอตรวจสอบ",
-  approved: "เผยแพร่แล้ว",
+  pending: "รอตรวจสอบ",
+  published: "เผยแพร่แล้ว",
   rejected: "ถูกตีกลับ",
+  archived: "เก็บเข้าคลัง",
 };
 
-const STATUS_STYLE: Record<LessonDraftStatus, string> = {
+const STATUS_STYLE: Record<CourseStatus, string> = {
   draft: "bg-slate-100 text-slate-600",
-  pending_review: "bg-amber-50 text-amber-700",
-  approved: "bg-emerald-50 text-emerald-700",
+  pending: "bg-amber-50 text-amber-700",
+  published: "bg-emerald-50 text-emerald-700",
   rejected: "bg-red-50 text-red-600",
+  archived: "bg-slate-100 text-slate-600",
 };
 
-function StatusBadge({ status }: { status: LessonDraftStatus }): ReactElement {
+function StatusBadge({ status }: { status: CourseStatus }): ReactElement {
   return (
     <span className={`inline-flex items-center text-[11.5px] font-semibold px-2.5 py-1 rounded-full ${STATUS_STYLE[status]}`}>
       {STATUS_LABEL[status]}
@@ -106,7 +110,11 @@ export default function TeacherCoursesPage(): ReactElement {
             created_at: string;
           }[]) ?? []
       );
-      const latest = allDrafts.sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0];
+      // ดึงเหตุผลจาก draft ที่ถูก "rejected" ล่าสุดโดยเฉพาะ ไม่ใช่ draft ที่สร้างล่าสุดเฉยๆ
+      // (ตรรกะเดียวกับหน้า /dashboard/teacher เพื่อไม่ให้เหตุผลหายไปทั้งที่คอร์ส status = rejected)
+      const latestRejected = allDrafts
+        .filter((d) => d.status === "rejected" && d.rejection_reason)
+        .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0];
 
       const studentCount = (enrollmentRows ?? []).filter((e) => e.course_id === course.id).length;
 
@@ -114,11 +122,10 @@ export default function TeacherCoursesPage(): ReactElement {
         id: course.id,
         title: course.title,
         price: course.price,
-        status: course.status,
+        status: course.status as CourseStatus,
         lessonCount: lessonsForCourse.length,
         studentCount,
-        latestStatus: latest?.status ?? null,
-        latestRejectionReason: latest?.rejection_reason ?? null,
+        latestRejectionReason: latestRejected?.rejection_reason ?? null,
       };
     });
 
@@ -137,17 +144,18 @@ export default function TeacherCoursesPage(): ReactElement {
   const filteredCourses = useMemo(() => {
     return courses.filter((course) => {
       const matchesSearch = course.title.toLowerCase().includes(searchTerm.trim().toLowerCase());
-      const matchesStatus = statusFilter === "all" || course.latestStatus === statusFilter;
+      const matchesStatus = statusFilter === "all" || course.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [courses, searchTerm, statusFilter]);
 
   const filterOptions: { value: StatusFilter; label: string }[] = [
     { value: "all", label: "ทั้งหมด" },
-    { value: "approved", label: "เผยแพร่แล้ว" },
-    { value: "pending_review", label: "รอตรวจสอบ" },
+    { value: "published", label: "เผยแพร่แล้ว" },
+    { value: "pending", label: "รอตรวจสอบ" },
     { value: "draft", label: "แบบร่าง" },
     { value: "rejected", label: "ถูกตีกลับ" },
+    { value: "archived", label: "เก็บเข้าคลัง" },
   ];
 
   return (
@@ -221,10 +229,9 @@ export default function TeacherCoursesPage(): ReactElement {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-[14.5px] font-semibold text-slate-900 leading-snug truncate">{course.title}</p>
-                  {course.status === "archived" && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">เก็บเข้าคลัง</span>}
-                  {course.latestStatus && <StatusBadge status={course.latestStatus} />}
+                  <StatusBadge status={course.status} />
                 </div>
-                {course.latestStatus === "rejected" && course.latestRejectionReason && (
+                {course.status === "rejected" && course.latestRejectionReason && (
                   <p className="mt-1 text-[12px] text-red-500">เหตุผล: {course.latestRejectionReason}</p>
                 )}
               </div>

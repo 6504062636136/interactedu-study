@@ -1608,7 +1608,7 @@ function submitStructuredAnswer(question, studentAnswer, answerEls, submitBtn, a
 
   // ---- เส้นทางเดิม: ไม่มีเฉลยฝังในเครื่อง (ตอนนี้คือ random_bank) ต้องพึ่ง server ตรวจเหมือนเดิม ----
   if (attempt > 0) {
-    feedback.innerHTML = '<p class="quiz-modal-hint">สัญญาณอินเทอร์เน็ตช้าไปนิด กำลังลองส่งคำตอบให้อีกครั้ง...</p>';
+    feedback.innerHTML = '<p class="quiz-modal-hint">กำลังลองส่งคำตอบให้อีกครั้ง...</p>';
   }
 
   fetchJson("/api/lessons/" + LESSON_DATA.lessonId + "/video-quiz-attempts", {
@@ -1669,7 +1669,7 @@ function submitAnswer(question, choiceIndex, choicesWrap, attempt) {
 
   // ---- เส้นทางเดิม: ไม่มีเฉลยฝังในเครื่อง (ตอนนี้คือ random_bank) ต้องพึ่ง server ตรวจเหมือนเดิม ----
   if (attempt > 0) {
-    feedback.innerHTML = "<p class=\\"quiz-modal-hint\\">สัญญาณอินเทอร์เน็ตช้าไปนิด กำลังลองส่งคำตอบให้อีกครั้ง...</p>";
+    feedback.innerHTML = "<p class=\\"quiz-modal-hint\\">กำลังลองส่งคำตอบให้อีกครั้ง...</p>";
   }
 
   fetchJson("/api/lessons/" + LESSON_DATA.lessonId + "/video-quiz-attempts", {

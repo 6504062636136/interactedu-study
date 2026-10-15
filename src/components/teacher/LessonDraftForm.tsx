@@ -691,7 +691,10 @@ export default function LessonDraftForm({
 
     const allQuestions = videoQuizQuestions.map(
       (question) => {
-        const { questionText, choices, timestampSeconds, explanation, sourceType, sourceQuestionId, imageUrl, imageCaption, imagePins, interactionType } = question;
+        // ★ questionId: ส่ง id ของข้อเดิมกลับไปด้วย เพื่อให้เซิร์ฟเวอร์อัปเดตทับข้อเดิม แทนการลบทิ้ง
+        // แล้วสร้างใหม่ (ถ้าไม่ส่ง คำตอบที่นักเรียนเคยทำไว้จะถูกลบตาม cascade ทุกครั้งที่กดบันทึก)
+        // ข้อที่ครูเพิ่งเพิ่มใหม่ในฟอร์มจะไม่มีค่านี้ = ให้เซิร์ฟเวอร์ insert ใหม่ตามปกติ
+        const { questionId, questionText, choices, timestampSeconds, explanation, sourceType, sourceQuestionId, imageUrl, imageCaption, imagePins, interactionType } = question;
         // drag_drop: แปลงฟอร์ม (___ ) เป็น answer_data ตอนบันทึก (ตรวจผ่านแล้วด้านบน)
         let answerData = question.answerData;
         if (interactionType === "drag_drop") {
@@ -699,6 +702,7 @@ export default function LessonDraftForm({
           if (built.ok) answerData = built.data;
         }
         return {
+          questionId,
           questionText,
           choices,
           timestampSeconds,

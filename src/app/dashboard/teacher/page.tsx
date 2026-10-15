@@ -71,7 +71,7 @@ function CourseRowItem({ course }: { course: CourseRow }): ReactElement {
           {course.lessonCount} บทเรียน · {course.studentCount} นักเรียน · ฿{course.price.toLocaleString("th-TH")}
           {course.category && <> · {course.category}</>}
         </p>
-        {course.status === "rejected" && course.latestStatus === "rejected" && course.latestRejectionReason && (
+        {course.status === "rejected" && course.latestRejectionReason && (
           <p className="mt-1.5 text-[12px] leading-relaxed text-red-700">เหตุผลที่ตีกลับ: {course.latestRejectionReason}</p>
         )}
       </div>
@@ -175,7 +175,12 @@ export default function TeacherDashboardPage(): ReactElement {
             created_at: string;
           }[]) ?? []
       );
-      const latest = allDrafts.sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0];
+      // ดึงเหตุผลจาก draft ที่ถูก "rejected" ล่าสุดโดยเฉพาะ ไม่ใช่ draft ที่สร้างล่าสุดเฉยๆ
+      // (ถ้าครูแก้ไข/เพิ่มบทเรียนใหม่หลังถูกตีกลับ draft ล่าสุดอาจไม่ใช่ตัวที่ rejected แล้ว
+      // ทำให้เหตุผลหายไปทั้งที่คอร์สยัง status = rejected อยู่)
+      const latestRejected = allDrafts
+        .filter((d) => d.status === "rejected" && d.rejection_reason)
+        .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0];
 
       return {
         id: course.id,
@@ -185,8 +190,8 @@ export default function TeacherDashboardPage(): ReactElement {
         category: course.category,
         lessonCount: lessonsForCourse.length,
         studentCount: approvedEnrollments.filter((e) => e.course_id === course.id).length,
-        latestStatus: latest?.status ?? null,
-        latestRejectionReason: latest?.rejection_reason ?? null,
+        latestStatus: latestRejected?.status ?? null,
+        latestRejectionReason: latestRejected?.rejection_reason ?? null,
       };
     });
 

@@ -70,7 +70,7 @@ export default async function CourseDetailPage({ params }: PageProps): Promise<R
   if (profile?.role !== "teacher" && profile?.role !== "admin") redirect("/");
 
   // ข้อมูลคอร์สหลักต้องเปิดได้ แม้ฐานข้อมูลยังไม่มีคอลัมน์ certificate
-  const [courseRes, certificateRes] = await Promise.all([
+  const [courseRes, certificateRes, examReviewRes] = await Promise.all([
     supabase
       .from("courses")
       .select("id, title, status, created_by, category")
@@ -81,9 +81,18 @@ export default async function CourseDetailPage({ params }: PageProps): Promise<R
       .select("certificate_enabled, certificate_pass_percentage, certificate_title, certificate_description, certificate_logo_path, certificate_issuer_name, certificate_signatory_name, certificate_signatory_title")
       .eq("id", courseId)
       .maybeSingle(),
+    // อ่านอย่างเดียวเพื่อแสดงแบนเนอร์เตือนครู — แยก query ออกมา ถ้าคอลัมน์ยังไม่มี/ดึงไม่สำเร็จก็แค่ไม่โชว์แบนเนอร์
+    supabase
+      .from("courses")
+      .select("exam_status, exam_rejection_reason")
+      .eq("id", courseId)
+      .maybeSingle(),
   ]);
 
   const course = courseRes.data;
+  const examStatus = examReviewRes.data?.exam_status ?? null;
+  const examRejected = examStatus === "rejected";
+  const examRejectionReason = examReviewRes.data?.exam_rejection_reason ?? null;
   const certificateSettings = certificateRes.data as CertificateSettings | null;
 
   // [แก้บั๊ก: หน้าคอร์ส 404 แบบไม่มีร่องรอย] เดิมถ้า courseRes มี error จริง (เช่น query ล้มเหลว
@@ -180,6 +189,51 @@ export default async function CourseDetailPage({ params }: PageProps): Promise<R
         {course.status === "archived" && (
           <div className="mb-8 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm text-slate-600">
             คอร์สนี้อยู่ในคลัง กรุณาติดต่อแอดมินหากต้องการนำกลับมาแก้ไขหรือเผยแพร่
+          </div>
+        )}
+
+        {examRejected && course.status !== "archived" && (
+          <div className="mb-8 flex items-start gap-4 overflow-hidden rounded-2xl border border-[#FF5A3C]/20 bg-gradient-to-r from-[#FF5A3C]/[0.07] to-white px-5 py-4 shadow-[0_1px_2px_rgba(15,27,61,0.04)]">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FF5A3C]/12 text-[#FF5A3C]">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 3-6.7" />
+                <path d="M3 4v5h5" />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13.5px] font-extrabold text-[#0F1B3D]">บททดสอบท้ายคอร์สถูกตีกลับ</p>
+              <p className="mt-1 text-[12.5px] leading-6 text-[#0F1B3D]/65">
+                กรุณาไปที่เมนู &apos;บททดสอบท้ายคอร์ส&apos; เพื่อดูเหตุผล แก้ไข และกดบันทึกเพื่อส่งตรวจใหม่อีกครั้ง
+              </p>
+              {examRejectionReason && (
+                <p className="mt-2 rounded-xl bg-white/80 px-3 py-2 text-[12px] leading-5 text-[#0F1B3D]/70 ring-1 ring-[#FF5A3C]/15">
+                  <span className="font-bold text-[#EB4A2D]">เหตุผล:</span> {examRejectionReason}
+                </p>
+              )}
+            </div>
+            <Link
+              href={`/dashboard/teacher/courses/${course.id}/exam`}
+              className="hidden shrink-0 self-center rounded-full bg-[#FF5A3C] px-4 py-2 text-[12px] font-bold text-white transition-colors hover:bg-[#EB4A2D] sm:inline-block"
+            >
+              ไปแก้ไขบททดสอบ
+            </Link>
+          </div>
+        )}
+
+        {examStatus === "pending" && readiness.examConfigured && course.status !== "archived" && (
+          <div className="mb-8 flex items-start gap-4 overflow-hidden rounded-2xl border border-[#0F1B3D]/10 bg-gradient-to-r from-[#0F1B3D]/[0.04] to-white px-5 py-4 shadow-[0_1px_2px_rgba(15,27,61,0.04)]">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0F1B3D]/8 text-[#0F1B3D]/60">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13.5px] font-extrabold text-[#0F1B3D]">บททดสอบท้ายคอร์สรอการตรวจสอบ</p>
+              <p className="mt-1 text-[12.5px] leading-6 text-[#0F1B3D]/65">
+                ส่งบททดสอบให้แอดมินแล้ว กำลังรอการอนุมัติ หากแอดมินตีกลับ ข้อความแจ้งพร้อมเหตุผลจะแสดงที่นี่
+              </p>
+            </div>
           </div>
         )}
 
