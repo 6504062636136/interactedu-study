@@ -13,6 +13,8 @@ type StudyTimeOptions = {
 
 const HEARTBEAT_MS = 15_000;
 
+// ศึกษา 3.2.2.16: custom hook ของเราใน Browser รับข้อมูล Player/iframe คืนฟังก์ชันหยุดนับ; useEffect ส่ง active ไป study-time API
+// generated นับเมื่อวิดีโอกำลังเล่นและแท็บมองเห็น; imported ที่ไม่มีวิดีโอนับเมื่ออยู่เบื้องหน้า ส่ง heartbeat ทุก 15 วินาที
 export function useStudentStudyTime({ courseId, lessonId, scormSource, currentPath, apiReady, iframeRef }: StudyTimeOptions): () => Promise<void> {
   const stopRef = useRef<() => Promise<void>>(async () => undefined);
 

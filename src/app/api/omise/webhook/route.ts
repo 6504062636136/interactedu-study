@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { activateMembershipForCharge } from "@/lib/payments/activate-membership";
 import { approveEnrollmentForCharge } from "@/lib/payments/approve-charge";
 
+// ศึกษา 3.2.2.4: Omise ส่ง event เข้า POST ฝั่ง Server; charge.complete ให้ดึง charge ซ้ำจาก Omise ไม่ใช้ body ตัดสินจ่ายสำเร็จ
+// สำเร็จเรียก helper สมาชิกก่อนแล้วคอร์ส; คืน received=true เมื่อจบ, gateway/บันทึกผิดพลาดคืน HTTP error
 export async function POST(request: NextRequest): Promise<NextResponse> {
   let event: { key?: unknown; data?: { id?: unknown } };
   try {

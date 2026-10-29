@@ -1,3 +1,9 @@
+/**
+ * หน้าที่ของไฟล์: สรุปคอร์สของผู้สอน จำนวนผู้เรียน และสถานะตรวจเนื้อหา
+ * เส้นทาง: /dashboard/teacher
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน
+ */
 // app/dashboard/teacher/page.tsx
 "use client";
 
@@ -6,6 +12,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import { BarChart3, BookOpen, CheckCircle2, Clock3, Plus, Sparkles, UsersRound, type LucideIcon } from "lucide-react";
 
+// supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
 const supabase = createClient();
 
 type LessonDraftStatus = "draft" | "pending_review" | "approved" | "rejected";
@@ -23,6 +30,7 @@ interface CourseRow {
   latestRejectionReason: string | null;
 }
 
+// STATUS_LABEL: ข้อความภาษาไทยของสถานะคอร์สแต่ละค่า
 const STATUS_LABEL: Record<CourseStatus, string> = {
   draft: "แบบร่าง",
   pending: "รอตรวจสอบ",
@@ -30,6 +38,7 @@ const STATUS_LABEL: Record<CourseStatus, string> = {
   rejected: "ถูกตีกลับ",
 };
 
+// STATUS_STYLE: คลาสสีป้ายที่จับคู่กับสถานะคอร์สแต่ละค่า
 const STATUS_STYLE: Record<CourseStatus, string> = {
   draft: "bg-slate-100 text-slate-600",
   pending: "bg-amber-50 text-amber-700",
@@ -37,6 +46,7 @@ const STATUS_STYLE: Record<CourseStatus, string> = {
   rejected: "bg-red-50 text-red-700",
 };
 
+/** แสดงการ์ดสถิติ โดย label เป็นชื่อ value เป็นค่า และ icon/tone กำหนดไอคอนกับสี */
 function StatCard({ label, value, detail, icon: Icon, tone }: { label: string; value: string | number; detail: string; icon: LucideIcon; tone: string }): ReactElement {
   return (
     <article className="flex min-h-[155px] flex-col justify-between rounded-[20px] border border-slate-200/80 bg-[#F8FAFD] p-4 transition-colors hover:border-slate-300 sm:p-5">
@@ -50,6 +60,7 @@ function StatCard({ label, value, detail, icon: Icon, tone }: { label: string; v
   );
 }
 
+/** จับคู่สถานะคอร์สกับข้อความภาษาไทยและสีป้ายสำหรับแสดงผล */
 function StatusBadge({ status }: { status: CourseStatus }): ReactElement {
   return (
     <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${STATUS_STYLE[status]}`}>
@@ -58,6 +69,7 @@ function StatusBadge({ status }: { status: CourseStatus }): ReactElement {
   );
 }
 
+/** แสดงคอร์สพร้อมจำนวนบทเรียน ผู้เรียน และผลตรวจเนื้อหาล่าสุด */
 function CourseRowItem({ course }: { course: CourseRow }): ReactElement {
   return (
     <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:gap-4">
@@ -85,6 +97,7 @@ function CourseRowItem({ course }: { course: CourseRow }): ReactElement {
   );
 }
 
+/** แสดงข้อความเมื่อยังไม่มีรายการ พร้อมคำแนะนำหรือทางไปขั้นตอนถัดไปตามหน้านี้ */
 function EmptyState(): ReactElement {
   return (
     <div className="flex flex-col items-center px-6 py-14 text-center">
@@ -103,15 +116,22 @@ function EmptyState(): ReactElement {
   );
 }
 
+/** จัดการโหลดสถิติคอร์สของผู้สอนและแสดงคอร์สล่าสุดพร้อมสถานะ */
 export default function TeacherDashboardPage(): ReactElement {
+  // courses: รายการคอร์สที่ใช้แสดงหรือคำนวณในหน้านี้; setCourses ใช้อัปเดตค่านี้
   const [courses, setCourses] = useState<CourseRow[]>([]);
+  // studentCount: จำนวนผู้เรียนหรือรายการลงทะเบียนตามขอบเขตที่หน้าส่วนนี้คำนวณ; setStudentCount ใช้อัปเดตค่านี้
   const [studentCount, setStudentCount] = useState<number>(0);
+  // isLoading: สถานะกำลังอ่านข้อมูล ใช้สลับส่วนโหลดและเนื้อหาจริง; setIsLoading ใช้อัปเดตค่านี้
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  // loadError: ข้อความหรือสถานะผิดพลาดขณะอ่านข้อมูลสำหรับแสดงบนหน้า; setLoadError ใช้อัปเดตค่านี้
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  /** อ่านคอร์สที่ผู้ใช้สร้าง รวมบทเรียน ฉบับร่าง และการลงทะเบียนที่อนุมัติเพื่อสรุปแดชบอร์ด */
   const loadDashboard = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     setLoadError(null);
+    // user, userError: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
     const {
       data: { user },
       error: userError,
@@ -123,6 +143,7 @@ export default function TeacherDashboardPage(): ReactElement {
       return;
     }
 
+    // courseRows, courseError: ผลอ่านข้อมูลคอร์ส พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
     const { data: courseRows, error: courseError } = await supabase
       .from("courses")
       .select("id, title, price, status, category")
@@ -135,7 +156,9 @@ export default function TeacherDashboardPage(): ReactElement {
       return;
     }
 
+    // baseCourses: ข้อมูลคอร์สหลักก่อนเติมจำนวนบทเรียน ผู้เรียน และรายละเอียดผลตรวจ
     const baseCourses = courseRows ?? [];
+    // courseIds: รหัสคอร์สที่ใช้จำกัดการอ่านข้อมูลเกี่ยวข้องให้ตรงกับรายการที่กำลังแสดง
     const courseIds = baseCourses.map((c) => c.id);
 
     if (courseIds.length === 0) {
@@ -145,6 +168,7 @@ export default function TeacherDashboardPage(): ReactElement {
       return;
     }
 
+    // lessonsRes, enrollmentsRes: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
     const [lessonsRes, enrollmentsRes] = await Promise.all([
       supabase
         .from("lessons")
@@ -162,11 +186,14 @@ export default function TeacherDashboardPage(): ReactElement {
     const lessonRows = lessonsRes.data;
     const enrollmentData = enrollmentsRes.data;
 
+    // approvedEnrollments: รายการลงทะเบียนที่อนุมัติแล้วสำหรับคำนวณจำนวนผู้เรียน
     const approvedEnrollments = enrollmentData ?? [];
 
     const rows: CourseRow[] = baseCourses.map((course) => {
+      // lessonsForCourse: บทเรียนที่กรองให้ตรงกับคอร์สที่กำลังสร้างข้อมูล
       const lessonsForCourse = (lessonRows ?? []).filter((l) => l.course_id === course.id);
 
+      // allDrafts: ฉบับร่างรวมจากทุกบทเรียนของคอร์ส เพื่อค้นหาผลตรวจที่เกี่ยวข้อง
       const allDrafts = lessonsForCourse.flatMap(
         (l) =>
           (l.lesson_drafts as unknown as {
@@ -208,11 +235,17 @@ export default function TeacherDashboardPage(): ReactElement {
     return () => window.clearTimeout(timeoutId);
   }, [loadDashboard]);
 
+  // publishedCount: จำนวนคอร์สในรายการที่มีสถานะเผยแพร่แล้ว
   const publishedCount = courses.filter((course) => course.status === "published").length;
+  // pendingCount: จำนวนคอร์สในรายการที่กำลังรอตรวจ
   const pendingCount = courses.filter((course) => course.status === "pending").length;
+  // rejectedCount: จำนวนคอร์สในรายการที่ถูกตีกลับให้แก้ไข
   const rejectedCount = courses.filter((course) => course.status === "rejected").length;
+  // publishedPercent: สัดส่วนคอร์สที่เผยแพร่แล้วเทียบกับคอร์สทั้งหมดของข้อมูลชุดนี้
   const publishedPercent = courses.length ? Math.round((publishedCount / courses.length) * 100) : 0;
+  // recentCourses: คอร์สล่าสุดสูงสุดหกรายการที่เลือกมาแสดงในแดชบอร์ด
   const recentCourses = courses.slice(0, 6);
+  // showPlaceholders: ระบุว่าจะใช้การ์ดตัวแทนระหว่างโหลดหรือเมื่อโหลดผิดพลาดและยังไม่มีคอร์ส
   const showPlaceholders = isLoading || (loadError !== null && courses.length === 0);
 
   return (

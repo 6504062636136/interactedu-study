@@ -1,3 +1,9 @@
+/**
+ * หน้าที่ของไฟล์: ตั้งค่าความยินยอมข้อมูลส่วนบุคคลและรหัสผ่านของผู้เรียน
+ * เส้นทาง: /dashboard/student/settings
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน ส่วน useRef เก็บค่าอ้างอิงที่ไม่สั่งแสดงผลใหม่
+ */
 "use client";
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
@@ -5,24 +11,38 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
 
+// supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
 const supabase = createClient();
 
+/** โหลดความยินยอมปัจจุบัน ให้แก้ไขและบันทึก พร้อมสถานะโหลดและข้อความผลลัพธ์ */
 export default function StudentSettingsPage(): ReactElement {
+  // pdpaConsent: ค่าความยินยอมข้อมูลส่วนบุคคลที่ผู้ใช้กำลังเลือกในฟอร์ม; setPdpaConsent ใช้อัปเดตค่านี้
   const [pdpaConsent, setPdpaConsent] = useState(false);
+  // savedConsentAt: เวลายินยอมที่บันทึกสำเร็จล่าสุดสำหรับแสดงสถานะจริง; setSavedConsentAt ใช้อัปเดตค่านี้
   const [savedConsentAt, setSavedConsentAt] = useState<string | null>(null);
+  // isLoading: สถานะกำลังอ่านข้อมูล ใช้สลับส่วนโหลดและเนื้อหาจริง; setIsLoading ใช้อัปเดตค่านี้
   const [isLoading, setIsLoading] = useState(true);
+  // canSave: ระบุว่าโหลดข้อมูลตั้งต้นพร้อมแล้วและอนุญาตให้กดบันทึกได้; setCanSave ใช้อัปเดตค่านี้
   const [canSave, setCanSave] = useState(false);
+  // isSaving: สถานะกำลังบันทึก ใช้แสดงข้อความรอและควบคุมปุ่มบันทึก; setIsSaving ใช้อัปเดตค่านี้
   const [isSaving, setIsSaving] = useState(false);
+  // message: ข้อความผลลัพธ์ที่ใช้แสดงให้ผู้ใช้ทราบตามบริบทของส่วนนี้; setMessage ใช้อัปเดตค่านี้
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  // showPolicy: สถานะเปิดหรือปิดข้อความนโยบายข้อมูลส่วนบุคคล; setShowPolicy ใช้อัปเดตค่านี้
   const [showPolicy, setShowPolicy] = useState(false);
+  // saveInFlight: ref เก็บว่ามีคำขอบันทึกกำลังทำงาน เพื่อป้องกันการบันทึกซ้ำ
   const saveInFlight = useRef(false);
 
   useEffect(() => {
+    // active: ธงภายใน effect ว่าคอมโพเนนต์ยังใช้งานอยู่ เพื่อไม่อัปเดต state หลัง cleanup
     let active = true;
+    /** อ่านผู้ใช้และ pdpa_consent_at แล้วเปิดให้บันทึกเมื่อโหลดสถานะสำเร็จ */
     async function load() {
       try {
+        // user, userError: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError || !user) throw new Error("กรุณาเข้าสู่ระบบก่อนแก้ไขการตั้งค่า");
+        // data, error: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้ พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
         const { data, error } = await supabase.from("profiles")
           .select("pdpa_consent_at").eq("id", user.id).single();
         if (error || !data) throw new Error(error?.message ?? "ไม่พบข้อมูลโปรไฟล์ กรุณาติดต่อผู้ดูแลระบบ");
@@ -41,14 +61,17 @@ export default function StudentSettingsPage(): ReactElement {
     return () => { active = false; };
   }, []);
 
+  /** ป้องกันการบันทึกซ้ำ แล้วบันทึกเวลายินยอมหรือ null ตามค่าที่ผู้ใช้เลือก */
   async function handleSave() {
     if (!canSave || saveInFlight.current || pdpaConsent === !!savedConsentAt) return;
     saveInFlight.current = true;
     setIsSaving(true);
     setMessage(null);
     try {
+      // user, userError: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("กรุณาเข้าสู่ระบบก่อนแก้ไขการตั้งค่า");
+      // data, error: ผลบันทึกข้อมูลโปรไฟล์ผู้ใช้ พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
       const { data, error } = await supabase.from("profiles")
         .update({ pdpa_consent_at: pdpaConsent ? new Date().toISOString() : null, updated_at: new Date().toISOString() })
         .eq("id", user.id).select("id, pdpa_consent_at").maybeSingle();

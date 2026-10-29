@@ -170,6 +170,8 @@ export class InsufficientQuestionBankError extends Error {
     this.name = "InsufficientQuestionBankError";
   }
 }
+// ศึกษา 3.2.2.9/14: helper ฝั่ง Server รับ courseId/seed=enrollment.id/customConstraints คืนคำถามที่สุ่มจาก question_bank หรือ throw
+// ใช้ service-role อ่านคลังได้หลัง caller ตรวจสิทธิ์; seed ทำให้ได้ชุดเดิมเมื่อข้อมูลคลังเดิม ไม่ได้ล็อก snapshot คำถามถาวร
 export async function loadSampledFinalExamQuestions(
   supabase: SupabaseClient,
   params: {

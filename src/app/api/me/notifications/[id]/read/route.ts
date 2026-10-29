@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+// ศึกษา 3.2.2.18: ผู้ใช้เปิดรายการ → PATCH โดย id=notifications.id; Server update is_read/read_at เฉพาะแถวที่ user_id=user.id
+// maybeSingle ยอมให้ไม่พบแถว แล้ว Route คืน 404; บันทึกผิดพลาดคืน 500; สำเร็จคืน {success:true}
 export async function PATCH(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }

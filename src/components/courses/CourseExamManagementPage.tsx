@@ -1,3 +1,7 @@
+/**
+ * หน้าที่ของไฟล์: โหลดและตรวจสิทธิ์ข้อมูลก่อนเปิดตัวแก้ไขข้อสอบท้ายคอร์สร่วมของผู้สอนและแอดมิน
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -36,18 +40,23 @@ interface StoredExamConfig {
   custom_constraints: { lessonId: string | null; difficulty: "easy" | "medium" | "hard"; count: number }[] | null;
 }
 
+/** ตรวจบทบาทและเจ้าของคอร์ส แล้วโหลดคำถาม การสุ่ม และผลตรวจข้อสอบให้ CourseExamEditor */
 export default async function CourseExamManagementPage({ courseId, workspace }: { courseId: string; workspace: "teacher" | "admin" }): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   // Give this read-only screen room for slower database responses. Disable SDK
   // retries below so each read has one bounded attempt before offering retry.
   const supabase = await createClient({ timeoutMs: 30000 });
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/login?redirect=/dashboard/${workspace}/courses/${courseId}/exam`);
 
+  /** บันทึกข้อผิดพลาดและสร้างหน้าข้อความโหลดไม่สำเร็จพร้อมลิงก์กลับพื้นที่คอร์ส */
   const loadError = (message: string, error: { message: string }) => {
     console.warn("[course/exam] load failed:", courseId, error.message);
     return <CourseExamLoadError message={message} backHref={`/dashboard/${workspace}/courses/${courseId}`} />;
   };
 
+  // profile, profileError, course, courseError: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [{ data: profile, error: profileError }, { data: course, error: courseError }] = await Promise.all([
     supabase.from("profiles").select("role").eq("id", user.id).maybeSingle().retry(false),
     // Keep the existence/ownership query limited to the original course columns.
@@ -59,9 +68,11 @@ export default async function CourseExamManagementPage({ courseId, workspace }: 
   if (profileError) return loadError("โหลดข้อมูลสิทธิ์ผู้ใช้ไม่สำเร็จ", profileError);
   if (courseError) return loadError("โหลดข้อมูลคอร์สไม่สำเร็จ", courseError);
   if (!course) notFound();
+  // allowed: ผลตรวจว่าผู้ใช้เป็นแอดมินหรือเป็นผู้สอนเจ้าของคอร์ส จึงเปิดหน้าจัดการข้อสอบได้
   const allowed = profile?.role === "admin" || (profile?.role === "teacher" && course.created_by === user.id);
   if (!allowed) redirect(`/dashboard/${workspace}`);
 
+  // certificateSettings, certificateError, lessonsData, lessonsError, examConfigData, examConfigError, examReview, examReviewError: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [
     { data: certificateSettings, error: certificateError },
     { data: lessonsData, error: lessonsError },
@@ -80,6 +91,7 @@ export default async function CourseExamManagementPage({ courseId, workspace }: 
       : Promise.resolve({ data: null, error: null }),
   ]);
 
+  /** ตรวจรหัสข้อผิดพลาดที่หมายถึงคอลัมน์ยังไม่มี เพื่อรองรับฐานข้อมูลก่อนเพิ่มการตั้งค่าใหม่ */
   // Preserve compatibility with databases where optional course columns have
   // not been migrated yet, but never treat a failed read as an empty exam.
   const missingColumn = (error: { code: string }) => error.code === "42703" || error.code === "PGRST204";
@@ -88,11 +100,16 @@ export default async function CourseExamManagementPage({ courseId, workspace }: 
   if (examConfigError) return loadError("โหลดการตั้งค่าบททดสอบไม่สำเร็จ", examConfigError);
   if (examReviewError && !missingColumn(examReviewError)) return loadError("โหลดสถานะบททดสอบไม่สำเร็จ", examReviewError);
 
+  // certificateEnabled: สถานะเปิดใช้งานการออกใบประกาศนียบัตรของคอร์ส
   const certificateEnabled = certificateSettings?.certificate_enabled ?? false;
+  // certificatePassPercentage: คะแนนร้อยละขั้นต่ำที่กำหนดให้ผ่านเกณฑ์ใบประกาศนียบัตร
   const certificatePassPercentage = Number(certificateSettings?.certificate_pass_percentage ?? 70);
 
+  // lessons: บทเรียนที่ใช้แสดงหรือเป็นฐานคำนวณในส่วนนี้
   const lessons = (lessonsData ?? []) as unknown as StoredLesson[];
+  // draftIds: รหัสฉบับร่างของบทเรียนที่นำมาอ่านคำถามสำหรับข้อสอบท้ายคอร์ส
   const draftIds = lessons.flatMap((lesson) => (lesson.lesson_drafts ?? []).map((draft) => draft.id));
+  // questionsData, questionsError: ผลอ่านข้อมูลคำถามในฉบับร่าง พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: questionsData, error: questionsError } = draftIds.length > 0
     ? await supabase.from("quiz_questions")
       .select("lesson_draft_id, question_text, explanation, order_index, video_timestamp_seconds, interaction_type, answer_data, image_url, image_caption, image_pins, quiz_choices(choice_text, is_correct, order_index)")
@@ -101,7 +118,9 @@ export default async function CourseExamManagementPage({ courseId, workspace }: 
     : { data: [], error: null };
   if (questionsError) return loadError("โหลดคำถามบททดสอบไม่สำเร็จ", questionsError);
 
+  // storedQuestions: คำถามจากฐานข้อมูลก่อนแปลงชื่อฟิลด์และเรียงตามลำดับฉบับร่าง
   const storedQuestions = (questionsData ?? []) as unknown as StoredQuestion[];
+  // questions: รายการคำถามที่เตรียมไว้แสดงหรือกำลังแก้ไขในส่วนนี้
   const questions = draftIds.flatMap((draftId) => storedQuestions.filter((question) => question.lesson_draft_id === draftId))
     .map((question) => ({
       questionText: question.question_text,
@@ -114,6 +133,7 @@ export default async function CourseExamManagementPage({ courseId, workspace }: 
       choices: [...question.quiz_choices].sort((a, b) => a.order_index - b.order_index).map((choice) => ({ text: choice.choice_text, isCorrect: choice.is_correct })),
     }));
   
+  // examConfig: ข้อกำหนดการสุ่มข้อสอบที่บันทึกไว้ หรือ null หากยังไม่มีการตั้งค่า
   const examConfig = examConfigData as StoredExamConfig | null;
 
   return (

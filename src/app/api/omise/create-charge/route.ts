@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+// ศึกษา 3.2.2.4: API Route ฝั่ง Server รับ POST {courseId} จาก OmiseQrPayment; getUser ตรวจผู้ใช้ก่อนอ่าน courses ราคา/สถานะ published
+// Math.round(price*100) เปลี่ยนบาทเป็นสตางค์; เรียก Omise แล้วบันทึก enrollments.pending ก่อนคืน chargeId/qrImageUrl หรือ HTTP error
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const supabase = await createClient();
 
@@ -77,6 +79,7 @@ console.log("Omise charge response:", JSON.stringify(charge, null, 2)); // เ�
   // เลยไม่เคยถูกสร้าง/อัปเดตจริง พอไปเช็คสถานะที่ /api/omise/charge-status จึงหาไม่เจอ
   // ("Charge not found") ทั้งที่จ่ายเงินผ่าน Omise สำเร็จแล้วจริงๆ — แก้โดยเช็ค error ทุกครั้ง
   // และเพิ่มคอลัมน์ paid_amount เข้าไปในตาราง enrollments จริงๆ (migration) แทนการตัดออก
+  // payment_slip_url ใน Flow นี้เก็บ charge.id ของ Omise ไม่ใช่ URL รูปสลิป; paid_amount เก็บราคาบาทจาก courses
   if (existing) {
     const { error: updateError } = await supabase
       .from("enrollments")

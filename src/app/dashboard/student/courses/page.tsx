@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงคอร์สในคลังผู้เรียน แยกยังไม่เริ่ม กำลังเรียน และเรียนจบ
+ * เส้นทาง: /dashboard/student/courses
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import { getLearningCourseStatus, isCourseInLibrary, loadLearningEnrollments, type LearningEnrollment, type LearningCourseStatus } from "@/lib/courses/learning-enrollment";
 import { loadSavedCourseEnrollments } from "@/lib/courses/course-library";
 // app/dashboard/student/courses/page.tsx
@@ -58,8 +63,11 @@ interface CourseCardData {
   status: LearningCourseStatus;
 }
 
+/** แสดงภาพปก ความก้าวหน้า เวลาเรียน และทางเข้าเรียนของคอร์สหนึ่งรายการ */
 function ProgressCard({ course }: { course: CourseCardData }): ReactElement {
+  // isDone: ระบุว่าคอร์สในการ์ดนี้มีสถานะหรือความก้าวหน้าว่าเรียนจบแล้ว
   const isDone = course.status === "completed";
+  // waiting: ระบุว่าคอร์สยังไม่เริ่มเรียน เพื่อเลือกข้อความและปุ่มเริ่มเรียนบนการ์ด
   const waiting = course.status === "not_started";
   return (
     <div
@@ -118,14 +126,18 @@ function ProgressCard({ course }: { course: CourseCardData }): ReactElement {
   );
 }
 
+/** โหลดคอร์สในคลัง เวลาเรียน และ tracking เพื่อสร้างการ์ดและแท็บตามความก้าวหน้า */
 export default async function MyCoursesPage({ searchParams }: { searchParams?: Promise<{ status?: string }> } = {}): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login?redirect=/dashboard/student/courses");
 
+  // data, enrollmentError, library, filters: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [{ data, error: enrollmentError }, library, filters] = await Promise.all([
     loadLearningEnrollments((includeStart) => supabase
     .from("enrollments")
@@ -138,15 +150,19 @@ export default async function MyCoursesPage({ searchParams }: { searchParams?: P
     searchParams ?? Promise.resolve({ status: undefined }),
   ]);
 
+  // enrollments: รายการลงทะเบียนที่ผ่านเงื่อนไข query และตัวกรองของหน้านี้แล้ว
   const enrollments = ((data ?? []) as unknown as EnrollmentRow[]).filter((row) => isCourseInLibrary(row, library.enrollmentIds));
+  // courseIds: รหัสคอร์สที่ใช้จำกัดการอ่านข้อมูลเกี่ยวข้องให้ตรงกับรายการที่กำลังแสดง
   const courseIds = enrollments.map((e) => e.course_id);
   const studyTimeResult = enrollments.length
     ? await supabase.from("student_study_time").select("enrollment_id, total_seconds").in("enrollment_id", enrollments.map((e) => e.id))
     : { data: [], error: null };
+  // studyTimeByEnrollment: เวลาเรียนสะสมเป็นวินาที แยกตามรหัสการลงทะเบียน
   const studyTimeByEnrollment = new Map(
     (studyTimeResult.data ?? []).map((row) => [row.enrollment_id, Number(row.total_seconds) || 0]),
   );
 
+  // certificateRows: ผลอ่านข้อมูลใบประกาศนียบัตร
   const { data: certificateRows } = courseIds.length
     ? await supabase
         .from("certificates")
@@ -155,17 +171,21 @@ export default async function MyCoursesPage({ searchParams }: { searchParams?: P
         .eq("status", "issued")
         .in("course_id", courseIds)
     : { data: [] };
+  // certifiedCourseIds: ชุดรหัสคอร์สที่ผู้ใช้มีใบประกาศนียบัตรสถานะ issued แล้ว
   const certifiedCourseIds = new Set((certificateRows ?? []).map((row) => row.course_id as string));
 
+  // cards: รายการข้อมูลการ์ดที่สร้างจากคอร์สและผลความก้าวหน้าแล้ว
   const cards: CourseCardData[] = [];
 
   if (courseIds.length > 0) {
+    // modulesData: ผลอ่านข้อมูลโมดูลและบทเรียน
     const { data: modulesData } = await supabase
       .from("modules")
       .select("id, course_id, order_index, lessons(id, order_index, is_published, video_duration_seconds, scorm_source, scorm_manifest)")
       .in("course_id", courseIds)
       .order("order_index", { ascending: true });
 
+    // trackingData: ผลอ่านข้อมูลความก้าวหน้าการเรียน SCORM
     const { data: trackingData } = await supabase
       .from("scorm_tracking")
       .select("lesson_id, lesson_status, video_completed, enrollment_id, completed_scos")
@@ -174,6 +194,7 @@ export default async function MyCoursesPage({ searchParams }: { searchParams?: P
         enrollments.map((e) => e.id)
       );
 
+    // modulesByCourse: จัดกลุ่มโมดูลตามรหัสคอร์สเพื่อคำนวณบทเรียนของแต่ละคอร์ส
     const modulesByCourse = new Map<string, ModuleWithLessons[]>();
     for (const m of (modulesData ?? []) as ModuleWithLessons[]) {
       const list = modulesByCourse.get(m.course_id) ?? [];
@@ -186,13 +207,16 @@ export default async function MyCoursesPage({ searchParams }: { searchParams?: P
       // (เช่น คอร์สถูกแก้ไขจน status ไม่ใช่ published ชั่วคราว) ข้ามไปเพื่อไม่ให้หน้าพัง
       if (!e.courses) continue;
 
+      // modules: โมดูลและบทเรียนภายในคอร์สที่จัดเตรียมไว้สำหรับส่วนนี้
       const modules = [...(modulesByCourse.get(e.course_id) ?? [])].sort(
         (a, b) => a.order_index - b.order_index
       );
+      // allLessons: บทเรียนที่เผยแพร่แล้วและเรียงตามโมดูลกับลำดับบทเรียนสำหรับคำนวณความก้าวหน้า
       const allLessons = modules.flatMap((m) =>
         [...(m.lessons ?? [])].filter((lesson) => lesson.is_published).sort((a, b) => a.order_index - b.order_index)
       );
 
+      // progress, allComplete: ผลสรุปจำนวนบทเรียน ความก้าวหน้า หรือบทเรียนเรียนต่อจากบริการกลาง
       const { percent: progress, allComplete } = summarizeStudentProgress(allLessons, ((trackingData ?? []) as TrackingRow[]).filter((row) => row.enrollment_id === e.id));
 
       cards.push({
@@ -211,15 +235,19 @@ export default async function MyCoursesPage({ searchParams }: { searchParams?: P
     }
   }
 
+  // tabs: รายการแท็บและชื่อที่ใช้สลับเนื้อหาในส่วนนี้
   const tabs: { status: LearningCourseStatus; label: string }[] = [
     { status: "not_started", label: "ยังไม่เริ่ม" },
     { status: "in_progress", label: "กำลังเรียน" },
     { status: "completed", label: "เรียนจบแล้ว" },
   ];
+  // defaultStatus: แท็บเริ่มต้นที่เลือกตามว่ามีคอร์สกำลังเรียน ยังไม่เริ่ม หรือเรียนจบแล้ว
   const defaultStatus = cards.some((course) => course.status === "in_progress") ? "in_progress"
     : cards.some((course) => course.status === "not_started") ? "not_started"
     : cards.length > 0 ? "completed" : "not_started";
+  // activeStatus: สถานะที่ผ่านการตรวจและถูกเลือกไว้สำหรับกรองหรือเปิดแท็บ
   const activeStatus = tabs.find((tab) => tab.status === filters.status)?.status ?? defaultStatus;
+  // visibleCards: การ์ดคอร์สเฉพาะสถานะของแท็บที่กำลังเปิด
   const visibleCards = cards.filter((course) => course.status === activeStatus);
 
   return (

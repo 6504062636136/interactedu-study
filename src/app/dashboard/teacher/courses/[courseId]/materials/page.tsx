@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: ตรวจสิทธิ์คอร์สและเตรียมรายการเอกสารประกอบให้หน้าจัดการไฟล์
+ * เส้นทาง: /dashboard/teacher/courses/[courseId]/materials
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 // app/teacher/courses/[courseId]/materials/page.tsx
 import type { ReactElement } from "react";
 import { notFound, redirect } from "next/navigation";
@@ -9,16 +14,22 @@ interface PageProps {
   params: Promise<{ courseId: string }>;
 }
 
+/** ตรวจผู้ใช้ บทบาท และเจ้าของคอร์ส แล้วโหลดเอกสารให้ CourseMaterialsUpload ตาม workspace */
 export async function CourseMaterialsWorkspacePage({ params, workspace = "teacher" }: PageProps & { workspace?: "teacher" | "admin" }): Promise<ReactElement> {
+  // courseId: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { courseId } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/login?redirect=/dashboard/${workspace}/courses/${courseId}/materials`);
 
+  // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (profile?.role !== "teacher" && profile?.role !== "admin") redirect("/");
 
+  // course: ผลอ่านข้อมูลคอร์ส
   const { data: course } = await supabase
     .from("courses")
     .select("id, title, created_by")
@@ -28,6 +39,7 @@ export async function CourseMaterialsWorkspacePage({ params, workspace = "teache
   if (!course) notFound();
   if (profile.role === "teacher" && course.created_by !== user.id) redirect(`/dashboard/${workspace}`);
 
+  // materials: ผลอ่านข้อมูลเอกสารประกอบคอร์ส
   const { data: materials } = await supabase
     .from("course_materials")
     .select("id, file_name, file_url")
@@ -54,6 +66,7 @@ export async function CourseMaterialsWorkspacePage({ params, workspace = "teache
   );
 }
 
+/** ส่ง props ของหน้าให้ตัวจัดการเอกสารร่วมในพื้นที่ผู้สอน */
 export default async function CourseMaterialsPage(props: PageProps): Promise<ReactElement> {
   return CourseMaterialsWorkspacePage({ ...props, workspace: "teacher" });
 }

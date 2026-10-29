@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงโปรไฟล์แอดมินและฟอร์มแก้ไขข้อมูลส่วนตัว
+ * เส้นทาง: /dashboard/admin/profile
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import Link from "next/link";
 import { Mail, UserRound } from "lucide-react";
 import type { ReactElement } from "react";
@@ -5,14 +10,18 @@ import { redirect } from "next/navigation";
 import AdminUserProfileForm from "@/components/admin/AdminUserProfileForm";
 import { createClient } from "@/utils/supabase/server";
 
+/** ตรวจบทบาทแอดมิน โหลดข้อมูลโปรไฟล์ และส่งค่าให้ฟอร์มข้อมูลส่วนตัว */
 export default async function AdminProfilePage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login?redirect=/dashboard/admin/profile");
 
+  // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profile } = await supabase
     .from("profiles")
     .select("role, full_name, phone, university, faculty")
@@ -21,6 +30,7 @@ export default async function AdminProfilePage(): Promise<ReactElement> {
 
   if (profile?.role !== "admin") redirect("/dashboard");
 
+  // fullName: ชื่อเต็มที่นำมาแสดงหรือใช้เป็นค่าเริ่มต้นของฟอร์มโปรไฟล์
   const fullName = profile.full_name ?? (user.user_metadata?.full_name as string | undefined) ?? "";
 
   return (

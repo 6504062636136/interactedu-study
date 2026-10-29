@@ -1,3 +1,9 @@
+/**
+ * หน้าที่ของไฟล์: แสดงคอร์สที่ผู้สอนสร้าง พร้อมค้นหาชื่อและกรองตามสถานะ
+ * เส้นทาง: /dashboard/teacher/courses
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน
+ */
 // app/dashboard/teacher/courses/page.tsx
 "use client";
 
@@ -6,6 +12,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import CourseLifecycleButton from "@/components/courses/CourseLifecycleButton";
 
+// supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
 const supabase = createClient();
 
 type LessonDraftStatus = "draft" | "pending_review" | "approved" | "rejected";
@@ -24,6 +31,7 @@ interface CourseRow {
   latestRejectionReason: string | null;
 }
 
+// STATUS_LABEL: ข้อความภาษาไทยของสถานะคอร์สแต่ละค่า
 const STATUS_LABEL: Record<CourseStatus, string> = {
   draft: "แบบร่าง",
   pending: "รอตรวจสอบ",
@@ -32,6 +40,7 @@ const STATUS_LABEL: Record<CourseStatus, string> = {
   archived: "เก็บเข้าคลัง",
 };
 
+// STATUS_STYLE: คลาสสีป้ายที่จับคู่กับสถานะคอร์สแต่ละค่า
 const STATUS_STYLE: Record<CourseStatus, string> = {
   draft: "bg-slate-100 text-slate-600",
   pending: "bg-amber-50 text-amber-700",
@@ -40,6 +49,7 @@ const STATUS_STYLE: Record<CourseStatus, string> = {
   archived: "bg-slate-100 text-slate-600",
 };
 
+/** จับคู่สถานะคอร์สกับข้อความภาษาไทยและสีป้ายสำหรับแสดงผล */
 function StatusBadge({ status }: { status: CourseStatus }): ReactElement {
   return (
     <span className={`inline-flex items-center text-[11.5px] font-semibold px-2.5 py-1 rounded-full ${STATUS_STYLE[status]}`}>
@@ -48,14 +58,22 @@ function StatusBadge({ status }: { status: CourseStatus }): ReactElement {
   );
 }
 
+/** โหลดคอร์สของผู้ใช้และจัดการตัวกรองสำหรับรายการคอร์สของผู้สอน */
 export default function TeacherCoursesPage(): ReactElement {
+  // courses: รายการคอร์สที่ใช้แสดงหรือคำนวณในหน้านี้; setCourses ใช้อัปเดตค่านี้
   const [courses, setCourses] = useState<CourseRow[]>([]);
+  // isLoading: สถานะกำลังอ่านข้อมูล ใช้สลับส่วนโหลดและเนื้อหาจริง; setIsLoading ใช้อัปเดตค่านี้
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  // loadError: ข้อความหรือสถานะผิดพลาดขณะอ่านข้อมูลสำหรับแสดงบนหน้า; setLoadError ใช้อัปเดตค่านี้
   const [loadError, setLoadError] = useState<string | null>(null);
+  // searchTerm: คำค้นปัจจุบันที่ใช้กรองรายการ โดยปรับรูปแบบก่อนเปรียบเทียบ; setSearchTerm ใช้อัปเดตค่านี้
   const [searchTerm, setSearchTerm] = useState<string>("");
+  // statusFilter: สถานะคอร์สที่เลือกในตัวกรองของหน้า; setStatusFilter ใช้อัปเดตค่านี้
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
+  /** โหลดคอร์ส บทเรียน ฉบับร่าง และจำนวนการลงทะเบียน เพื่อสร้างข้อมูลรายการคอร์ส */
   const loadCourses = useCallback(async (): Promise<void> => {
+    // user, userError: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
     const {
       data: { user },
       error: userError,
@@ -67,6 +85,7 @@ export default function TeacherCoursesPage(): ReactElement {
       return;
     }
 
+    // courseRows, courseError: ผลอ่านข้อมูลคอร์ส พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
     const { data: courseRows, error: courseError } = await supabase
       .from("courses")
       .select("id, title, price, status")
@@ -79,7 +98,9 @@ export default function TeacherCoursesPage(): ReactElement {
       return;
     }
 
+    // baseCourses: ข้อมูลคอร์สหลักก่อนเติมจำนวนบทเรียน ผู้เรียน และรายละเอียดผลตรวจ
     const baseCourses = courseRows ?? [];
+    // courseIds: รหัสคอร์สที่ใช้จำกัดการอ่านข้อมูลเกี่ยวข้องให้ตรงกับรายการที่กำลังแสดง
     const courseIds = baseCourses.map((c) => c.id);
 
     if (courseIds.length === 0) {
@@ -88,11 +109,13 @@ export default function TeacherCoursesPage(): ReactElement {
       return;
     }
 
+    // lessonRows: ผลอ่านข้อมูลบทเรียน
     const { data: lessonRows } = await supabase
       .from("lessons")
       .select("id, course_id, lesson_drafts(status, rejection_reason, created_at)")
       .in("course_id", courseIds);
 
+    // enrollmentRows: ผลอ่านข้อมูลการลงทะเบียน
     const { data: enrollmentRows } = await supabase
       .from("enrollments")
       .select("course_id, status")
@@ -100,8 +123,10 @@ export default function TeacherCoursesPage(): ReactElement {
       .eq("status", "approved");
 
     const rows: CourseRow[] = baseCourses.map((course) => {
+      // lessonsForCourse: บทเรียนที่กรองให้ตรงกับคอร์สที่กำลังสร้างข้อมูล
       const lessonsForCourse = (lessonRows ?? []).filter((l) => l.course_id === course.id);
 
+      // allDrafts: ฉบับร่างรวมจากทุกบทเรียนของคอร์ส เพื่อค้นหาผลตรวจที่เกี่ยวข้อง
       const allDrafts = lessonsForCourse.flatMap(
         (l) =>
           (l.lesson_drafts as unknown as {
@@ -116,6 +141,7 @@ export default function TeacherCoursesPage(): ReactElement {
         .filter((d) => d.status === "rejected" && d.rejection_reason)
         .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0];
 
+      // studentCount: จำนวนผู้เรียนหรือรายการลงทะเบียนตามขอบเขตที่หน้าส่วนนี้คำนวณ
       const studentCount = (enrollmentRows ?? []).filter((e) => e.course_id === course.id).length;
 
       return {
@@ -141,14 +167,18 @@ export default function TeacherCoursesPage(): ReactElement {
     return () => window.clearTimeout(timeoutId);
   }, [loadCourses]);
 
+  // filteredCourses: คอร์สที่ผ่านทั้งการค้นหาชื่อและตัวกรองสถานะปัจจุบัน
   const filteredCourses = useMemo(() => {
     return courses.filter((course) => {
+      // matchesSearch: ผลตรวจว่าชื่อรายการตรงกับคำค้นปัจจุบันหรือไม่
       const matchesSearch = course.title.toLowerCase().includes(searchTerm.trim().toLowerCase());
+      // matchesStatus: ผลตรวจว่าสถานะรายการตรงกับตัวกรองหรือเลือกแสดงทั้งหมด
       const matchesStatus = statusFilter === "all" || course.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [courses, searchTerm, statusFilter]);
 
+  // filterOptions: ตัวเลือกสถานะและชื่อภาษาไทยที่แสดงในแถบกรองคอร์ส
   const filterOptions: { value: StatusFilter; label: string }[] = [
     { value: "all", label: "ทั้งหมด" },
     { value: "published", label: "เผยแพร่แล้ว" },

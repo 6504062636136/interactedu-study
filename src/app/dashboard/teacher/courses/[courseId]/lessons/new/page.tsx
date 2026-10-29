@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: เตรียมฟอร์มสร้างหรือแก้ไขฉบับร่างบทเรียนร่วมระหว่างผู้สอนกับแอดมิน
+ * เส้นทาง: /dashboard/teacher/courses/[courseId]/lessons/new
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 // app/dashboard/teacher/courses/[courseId]/lessons/new/page.tsx
 import type { ReactElement } from "react";
 import { notFound, redirect } from "next/navigation";
@@ -16,24 +21,31 @@ interface PageProps {
 // เด้งเงียบไปโหมด "เพิ่มบทเรียนใหม่"
 const NO_DRAFT_ERRORS = new Set(["ยังไม่มีฉบับร่างของบทเรียนนี้"]);
 
+/** ตรวจสิทธิ์คอร์ส เตรียมโมดูล และโหลดฉบับร่างเมื่อมี lessonId ก่อนแสดง LessonDraftForm */
 export async function CourseLessonEditorPage({
   params,
   searchParams,
   workspace = "teacher",
 }: PageProps & { workspace?: "teacher" | "admin" }): Promise<ReactElement> {
+  // courseId: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { courseId } = await params;
+  // lessonId: ค่าจาก query string สำหรับตัวกรอง ข้อความผลลัพธ์ หรือโหมดแก้ไขของหน้า
   const { lessonId } = await searchParams;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect(`/login?redirect=/dashboard/${workspace}/courses/${courseId}/lessons/new`);
 
+  // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (profile?.role !== "teacher" && profile?.role !== "admin") redirect("/");
 
+  // course, courseError: ผลอ่านข้อมูลคอร์ส พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: course, error: courseError } = await supabase
     .from("courses")
     .select("id, title, created_by")
@@ -45,6 +57,7 @@ export async function CourseLessonEditorPage({
   // "ไม่พบคอร์ส" ให้ลอง query ซ้ำอีกครั้งแบบเงียบๆ ก่อน — ทุกจุดหลังจากนี้ใช้ confirmedCourse แทน
   let confirmedCourse = course;
   if (!courseError && !confirmedCourse) {
+    // retryResult: ผลลองอ่านคอร์สอีกครั้งก่อนตัดสินว่าไม่สามารถเปิดตัวแก้ไขได้
     const retryResult = await supabase
       .from("courses")
       .select("id, title, created_by")
@@ -78,6 +91,7 @@ export async function CourseLessonEditorPage({
   if (!confirmedCourse) notFound();
   if (profile.role === "teacher" && confirmedCourse.created_by !== user.id) redirect(`/dashboard/${workspace}`);
 
+  // courseModule: ผลอ่านข้อมูลโมดูลและบทเรียน
   let { data: courseModule } = await supabase
     .from("modules")
     .select("id")
@@ -87,6 +101,7 @@ export async function CourseLessonEditorPage({
     .maybeSingle();
 
   if (!courseModule) {
+    // newModule, newModuleError: ผลบันทึกข้อมูลโมดูลและบทเรียน พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
     const { data: newModule, error: newModuleError } = await supabase
       .from("modules")
       .insert({ course_id: courseId, title: "บทเรียนทั่วไป", order_index: 0 })
@@ -181,6 +196,7 @@ export async function CourseLessonEditorPage({
   );
 }
 
+/** ส่ง props ไปยังหน้าตัวแก้ไขบทเรียนร่วมโดยใช้พื้นที่ผู้สอนเป็นค่าเริ่มต้น */
 export default async function NewLessonPage(props: PageProps): Promise<ReactElement> {
   return CourseLessonEditorPage({ ...props, workspace: "teacher" });
 }

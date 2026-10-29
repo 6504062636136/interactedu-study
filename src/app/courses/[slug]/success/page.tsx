@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงผลลงทะเบียนสำเร็จและทางเข้าสู่ห้องเรียน
+ * เส้นทาง: /courses/[slug]/success
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 // src/app/courses/[slug]/success/page.tsx
 import type { ReactElement } from "react";
 import Link from "next/link";
@@ -13,14 +18,18 @@ interface Course {
   slug: string;
 }
 
+/** ตรวจว่าผู้ใช้มีรายการลงทะเบียนที่อนุมัติและยังใช้ได้ ก่อนแสดงหน้าสำเร็จ */
 export default async function EnrollSuccessPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }): Promise<ReactElement> {
+  // slug: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { slug } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -29,6 +38,7 @@ export default async function EnrollSuccessPage({
     redirect(`/login?redirect=/courses/${slug}/success`);
   }
 
+  // course, error: ผลอ่านข้อมูลคอร์ส พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: course, error } = await supabase
     .from("courses")
     .select("id, title, slug")
@@ -40,6 +50,7 @@ export default async function EnrollSuccessPage({
     notFound();
   }
 
+  // typedCourse: ข้อมูลคอร์สที่กำหนดชนิดให้ตรงกับโครงสร้างที่หน้ารายละเอียดใช้งาน
   const typedCourse = course as Course;
 
   // กันคนพิมพ์ URL เข้ามาตรงๆ ทั้งที่ยังไม่ได้ enroll / จ่ายเงินสำเร็จจริง
@@ -63,10 +74,13 @@ export default async function EnrollSuccessPage({
     .eq("id", user.id)
     .maybeSingle();
 
+  // displayName: ชื่อที่ใช้แสดง โดยเลือกจากโปรไฟล์หรือข้อมูลบัญชีและมีชื่อสำรองเมื่อไม่มีข้อมูล
   const displayName =
     (user.user_metadata?.full_name as string | undefined) ?? user.email?.split("@")[0] ?? "ผู้ใช้";
+  // role: บทบาทบัญชีที่ใช้เลือกเส้นทางหรือส่งพร้อมข้อมูลสมัคร
   const role = profile?.role ?? "student";
 
+  // enterClassroomHref: เส้นทางไปหน้าภาพรวมการเรียนของคอร์สที่ลงทะเบียนสำเร็จ
   const enterClassroomHref = `/dashboard/student/courses/${typedCourse.id}`;
 
   return (

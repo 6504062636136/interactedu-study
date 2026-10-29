@@ -178,6 +178,8 @@ async function fetchTitleMaps(
   };
 }
 
+// ศึกษา 3.2.2.8: QuestionBankForm ส่ง QuestionBankInput มา Server Action ของเรา คืน {id} หรือ {error}
+// ตรวจ teacher/admin, คำถาม/เฉลยและสิทธิ์ผูกคอร์ส แล้ว INSERT question_bank → choices → topic_tags; สำเร็จ revalidate รายการ
 export async function createQuestionBankItem(input: QuestionBankInput): Promise<{ error?: string; id?: string }> {
   const supabase = await createClient();
   const auth = await requireTeacher(supabase);
@@ -213,6 +215,7 @@ export async function createQuestionBankItem(input: QuestionBankInput): Promise<
   if (questionError || !question) return { error: toTeacherSaveError(questionError) };
 
   if (isChoiceBased) {
+    // filter() ตัดตัวเลือกข้อความว่าง; map() แปลงแต่ละตัวเลือกเป็นแถว DB โดย question_id ใช้ question_bank.id ที่เพิ่งได้กลับมา
     const choiceRows = input.choices
       .filter((choice) => choice.text.trim())
       .map((choice, index) => ({
@@ -247,6 +250,7 @@ export async function createQuestionBankItem(input: QuestionBankInput): Promise<
   return { id: question.id };
 }
 
+// id เป็น question_bank.id ที่ UI ส่งมา; Action ตรวจ owner_teacher_id อีกชั้นก่อนแก้คำถาม/ตัวเลือก/แท็ก ไม่ใช้แค่ปุ่มที่ UI ซ่อนไว้
 export async function updateQuestionBankItem(id: string, input: QuestionBankInput): Promise<{ error?: string }> {
   const supabase = await createClient();
   const auth = await requireTeacher(supabase);

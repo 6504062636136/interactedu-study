@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงคลังคำถามที่ผู้ใช้เข้าถึงได้พร้อมข้อมูลหมวดหมู่และหัวข้อ
+ * เส้นทาง: /dashboard/teacher/question-bank
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -11,6 +16,7 @@ type TopicTagRow = {
   lessons: { order_index: number; title: string | null } | null;
 };
 
+/** สร้างชื่อหัวข้อของคำถามจากแท็กคอร์สและบทเรียน โดยใช้ category เป็นค่าทดแทน */
 function getTopicLabel(tags: TopicTagRow[], category: string | null): string {
   if (tags.length > 0) {
     return tags
@@ -29,11 +35,15 @@ function getTopicLabel(tags: TopicTagRow[], category: string | null): string {
   return category ?? "";
 }
 
+/** ตรวจผู้ใช้และบทบาท โหลดคำถามที่มีสิทธิ์เห็น แล้วแปลงข้อมูลให้รายการคลังคำถาม */
 export default async function QuestionBankPage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?redirect=/dashboard/teacher/question-bank");
 
+  // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (profile?.role !== "teacher" && profile?.role !== "admin") redirect("/");
 
@@ -60,8 +70,10 @@ export default async function QuestionBankPage(): Promise<ReactElement> {
     .select("id, title")
     .eq("created_by", user.id)
     .order("title", { ascending: true });
+  // ownCourses: ตัวเลือกคอร์สที่ผู้ใช้เป็นเจ้าของสำหรับใช้ในหน้าคลังคำถาม
   const ownCourses = (ownCourseRows ?? []).map((course) => ({ id: course.id as string, title: (course.title as string) ?? "" }));
 
+  // questions: รายการคำถามที่เตรียมไว้แสดงหรือกำลังแก้ไขในส่วนนี้
   const questions = (data ?? []).map((question) => ({
     id: question.id,
     questionText: question.question_text,

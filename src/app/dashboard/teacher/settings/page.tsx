@@ -1,3 +1,9 @@
+/**
+ * หน้าที่ของไฟล์: ตั้งค่าการแจ้งเตือนผู้เรียนใหม่และรหัสผ่านของผู้สอน
+ * เส้นทาง: /dashboard/teacher/settings
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน
+ */
 // app/dashboard/teacher/settings/page.tsx
 "use client";
 
@@ -5,21 +11,31 @@ import { useEffect, useState, type ReactElement } from "react";
 import { createClient } from "@/utils/supabase/client";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
 
+// supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
 const supabase = createClient();
 
+/** แสดงสวิตช์แจ้งเตือนและผลการบันทึก พร้อมส่วนเปลี่ยนรหัสผ่าน */
 export default function TeacherSettingsPage(): ReactElement {
+  // newStudentNotif: ค่าที่กำลังเลือกว่าให้แจ้งเตือนเมื่อมีผู้เรียนใหม่หรือไม่; setNewStudentNotif ใช้อัปเดตค่านี้
   const [newStudentNotif, setNewStudentNotif] = useState(true);
+  // language: ภาษาที่ใช้บันทึกในการตั้งค่าโปรไฟล์ของหน้านี้
   //const [language, setLanguage] = useState<"th" | "en">("th");
   const [language] = useState<"th" | "en">("th");
+  // isLoading: สถานะกำลังอ่านข้อมูล ใช้สลับส่วนโหลดและเนื้อหาจริง; setIsLoading ใช้อัปเดตค่านี้
   const [isLoading, setIsLoading] = useState(true);
+  // isSaving: สถานะกำลังบันทึก ใช้แสดงข้อความรอและควบคุมปุ่มบันทึก; setIsSaving ใช้อัปเดตค่านี้
   const [isSaving, setIsSaving] = useState(false);
+  // message: ข้อความผลลัพธ์ที่ใช้แสดงให้ผู้ใช้ทราบตามบริบทของส่วนนี้; setMessage ใช้อัปเดตค่านี้
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
+    /** โหลด language และ notify_new_student ของผู้ใช้เพื่อเติมสถานะการตั้งค่า */
     async function load() {
+      // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setIsLoading(false); return; }
 
+      // data: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
       const { data } = await supabase
         .from("profiles")
         .select("language, notify_new_student")
@@ -35,12 +51,15 @@ export default function TeacherSettingsPage(): ReactElement {
     void load();
   }, []);
 
+  /** บันทึกภาษาและการแจ้งเตือนผู้เรียนใหม่ลงโปรไฟล์ของผู้ใช้ปัจจุบัน */
   async function handleSave() {
     setIsSaving(true);
     setMessage(null);
+    // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setIsSaving(false); return; }
 
+    // error: ผลบันทึกข้อมูลโปรไฟล์ผู้ใช้ พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
     const { error } = await supabase
       .from("profiles")
       .update({

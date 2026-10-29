@@ -1,3 +1,5 @@
+// ศึกษา 3.2.2.7: helper ของเราใน Browser รับ File/onProgress คืน publicUrl หรือ throw
+// LessonDraftForm ขอ signed URL จาก POST /api/r2-upload-url แล้ว PUT ไฟล์ตรงไป Cloudflare R2; ส่ง URL ต่อให้ saveLessonDraft
 export async function uploadVideoToR2(
   file: File,
   onProgress?: (percent: number) => void

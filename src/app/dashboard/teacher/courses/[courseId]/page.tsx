@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: จัดการคอร์สของผู้สอน แสดงบทเรียน ฉบับร่าง ผลตรวจ และความพร้อมก่อนส่งตรวจ
+ * เส้นทาง: /dashboard/teacher/courses/[courseId]
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 // app/dashboard/teacher/courses/[courseId]/page.tsx
 import type { ReactElement } from "react";
 import { notFound, redirect } from "next/navigation";
@@ -49,6 +54,7 @@ interface CertificateSettings {
   certificate_signatory_title: string | null;
 }
 
+// statusLabel: จับคู่สถานะฉบับร่างบทเรียนกับข้อความและสีที่ใช้แสดง
 const statusLabel: Record<string, { text: string; color: string }> = {
   draft: { text: "ฉบับร่าง", color: "text-[#0F1B3D]/40" },
   pending_review: { text: "รอตรวจสอบ", color: "text-[#FF5A3C]" },
@@ -56,16 +62,21 @@ const statusLabel: Record<string, { text: string; color: string }> = {
   rejected: { text: "ถูกตีกลับ", color: "text-[#EB4A2D]" },
 };
 
+/** ตรวจสิทธิ์เจ้าของคอร์สหรือแอดมิน แล้วโหลดบทเรียน ข้อสอบ ใบประกาศนียบัตร และผลตรวจความพร้อม */
 export default async function CourseDetailPage({ params }: PageProps): Promise<ReactElement> {
+  // courseId: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { courseId } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect(`/login?redirect=/dashboard/teacher/courses/${courseId}`);
 
+  // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (profile?.role !== "teacher" && profile?.role !== "admin") redirect("/");
 
@@ -89,10 +100,15 @@ export default async function CourseDetailPage({ params }: PageProps): Promise<R
       .maybeSingle(),
   ]);
 
+  // course: ข้อมูลคอร์สที่ผูกกับรายการหรือหน้าที่กำลังแสดง ซึ่งอาจเป็น null หากอ่านไม่พบ
   const course = courseRes.data;
+  // examStatus: สถานะผลตรวจข้อสอบท้ายคอร์สที่ใช้แสดงป้ายและคำแนะนำ
   const examStatus = examReviewRes.data?.exam_status ?? null;
+  // examRejected: ระบุว่าข้อสอบท้ายคอร์สถูกตีกลับและต้องแสดงเหตุผลแก้ไข
   const examRejected = examStatus === "rejected";
+  // examRejectionReason: เหตุผลที่ผู้ตรวจส่งข้อสอบกลับมาให้แก้ไข
   const examRejectionReason = examReviewRes.data?.exam_rejection_reason ?? null;
+  // certificateSettings: การตั้งค่าใบประกาศนียบัตรที่โหลดแยกจากข้อมูลหลักของคอร์ส
   const certificateSettings = certificateRes.data as CertificateSettings | null;
 
   // [แก้บั๊ก: หน้าคอร์ส 404 แบบไม่มีร่องรอย] เดิมถ้า courseRes มี error จริง (เช่น query ล้มเหลว
@@ -121,14 +137,18 @@ export default async function CourseDetailPage({ params }: PageProps): Promise<R
     .eq("course_id", courseId)
     .order("order_index", { ascending: true });
 
+  // lessons: บทเรียนที่ใช้แสดงหรือเป็นฐานคำนวณในส่วนนี้
   const lessons = (lessonsData ?? []) as unknown as LessonRow[];
 
+  // readiness: ผลตรวจความพร้อมของคอร์สจากบริการกลาง ใช้แสดงรายการที่ต้องแก้ก่อนส่งตรวจ
   const readiness = await checkCourseReadiness(courseId);
+  // lessonIssueById: ผลตรวจความพร้อมที่ค้นได้ด้วยรหัสบทเรียน เพื่อแสดงปัญหาตรงบทเรียน
   const lessonIssueById = new Map(readiness.lessonIssues.map((issue) => [issue.lessonId, issue]));
 
   // หา draft ล่าสุดของแต่ละ lesson (เผื่อมีหลาย draft เก่าสะสมอยู่)
   const lessonsWithDetails = lessons.map((lesson) => {
     const drafts = lesson.lesson_drafts ?? [];
+    // latestDraft: ฉบับร่างที่ถูกเลือกตามกติกาของส่วนนี้สำหรับแสดงเนื้อหาหรือสถานะ
     const latestDraft = [...drafts].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )[0];
@@ -275,7 +295,9 @@ export default async function CourseDetailPage({ params }: PageProps): Promise<R
           <div className="space-y-3">
             {lessonsWithDetails.map((lesson, index) => {
               const draft = lesson.latestDraft;
+              // questions: รายการคำถามที่เตรียมไว้แสดงหรือกำลังแก้ไขในส่วนนี้
               const questions = [...(draft?.quiz_questions ?? [])].sort((a, b) => a.order_index - b.order_index);
+              // videoQuizzes: คำถามในฉบับร่างที่มีเวลาแทรกระหว่างวิดีโอ
               const videoQuizzes = questions.filter((question) => question.video_timestamp_seconds != null);
               const issue = lessonIssueById.get(lesson.id);
 

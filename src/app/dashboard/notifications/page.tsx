@@ -1,9 +1,15 @@
+/**
+ * หน้าที่ของไฟล์: แสดงรายการแจ้งเตือนของผู้ใช้ในแดชบอร์ด
+ * เส้นทาง: /dashboard/notifications
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import NotificationList from "@/components/notifications/NotificationList";
 import AppBrand from "@/components/AppBrand";
 import { createClient } from "@/utils/supabase/server";
 
+/** เลือกเส้นทางหน้าแรกของแดชบอร์ดจาก role ของผู้ใช้ */
 function dashboardHome(role: string | null | undefined): string {
   if (role === "admin") return "/dashboard/admin";
   if (role === "teacher") return "/dashboard/teacher";
@@ -11,14 +17,19 @@ function dashboardHome(role: string | null | undefined): string {
   return "/";
 }
 
+/** อ่านบทบาทเพื่อเลือกปุ่มกลับ แล้วแสดงคอมโพเนนต์รายการแจ้งเตือน */
 export default async function NotificationsPage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profile } = user
     ? await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle()
     : { data: null };
+  // homeHref: เส้นทางกลับหน้าแดชบอร์ดที่เลือกตามบทบาทผู้ใช้
   const homeHref = dashboardHome(profile?.role);
 
   return (

@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แจ้งสถานะบัญชีที่ถูกระงับหรือเก็บถาวร พร้อมช่องทางติดต่อผู้ดูแล
+ * เส้นทาง: /account-inactive
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, Mail, ShieldAlert } from "lucide-react";
@@ -5,24 +10,33 @@ import AppBrand from "@/components/AppBrand";
 import LogoutButton from "@/components/LogoutButton";
 import { createClient } from "@/utils/supabase/server";
 
+/** แจ้งสถานะบัญชีที่ถูกระงับหรือเก็บถาวร พร้อมช่องทางติดต่อผู้ดูแล */
 export default async function AccountInactivePage({ searchParams }: { searchParams?: Promise<{ reason?: string }> } = {}) {
+  // reason: เหตุผลจาก query string ที่ใช้ประกอบข้อความสถานะบัญชี
   const reason = searchParams ? (await searchParams).reason : undefined;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const { data: { user } } = await supabase.auth.getUser();
+  // archived: ระบุว่าต้องแสดงข้อความบัญชีที่ถูกเก็บถาวรหรือไม่
   let archived = !user && reason === "archived";
   if (user) {
+    // profile, error: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้ พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
     const { data: profile, error } = await supabase.from("profiles")
       .select("is_active")
       .eq("id", user.id)
       .maybeSingle();
     if (!error && profile?.is_active === true) redirect("/dashboard");
     if (profile?.is_active === false) {
+      // archiveState: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
       const { data: archiveState } = await supabase.from("profiles").select("archived_at").eq("id", user.id).maybeSingle();
       archived = Boolean(archiveState?.archived_at);
     }
   }
 
+  // supportEmail: อีเมลติดต่อที่อ่านจากการตั้งค่าฝั่งเซิร์ฟเวอร์
   const supportEmail = process.env.SUPPORT_EMAIL?.trim();
+  // contactHref: ลิงก์เขียนอีเมลติดต่อเมื่อรูปแบบ supportEmail ถูกต้อง มิฉะนั้นเป็น null
   const contactHref = supportEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportEmail)
     ? `mailto:${supportEmail}?subject=${encodeURIComponent("ขอตรวจสอบสถานะบัญชี Interact Edu")}`
     : null;

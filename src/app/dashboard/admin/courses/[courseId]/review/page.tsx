@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: หน้าตรวจอนุมัติคอร์ส บทเรียน ข้อสอบ และการตั้งค่าใบประกาศนียบัตร
+ * เส้นทาง: /dashboard/admin/courses/[courseId]/review
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -9,6 +14,7 @@ import CertificateSettingsForm from "@/components/certificates/CertificateSettin
 import CourseManagementTabs from "@/components/courses/CourseManagementTabs";
 import CourseApproveActions from "@/components/CourseApproveActions";
 
+// COURSE_STATUS_LABEL: ข้อความภาษาไทยสำหรับแสดงสถานะวงจรคอร์ส
 const COURSE_STATUS_LABEL: Record<string, string> = {
   draft: "ฉบับร่าง",
   pending: "รออนุมัติ",
@@ -86,6 +92,7 @@ interface CourseCertificateSettings {
   certificate_signatory_title: string | null;
 }
 
+/** ตรวจบทบาทแอดมิน โหลดเนื้อหาคอร์ส และเลือกฉบับร่างที่ส่งตรวจเพื่อแสดงให้พิจารณา */
 // export default async function AdminCourseReviewPage({
 //   params,
 // }: {
@@ -178,15 +185,19 @@ export default async function AdminCourseReviewPage({
 }: {
   params: Promise<{ courseId: string }>;
 }): Promise<ReactElement> {
+  // courseId: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { courseId } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect(`/login?redirect=/admin/courses/${courseId}/review`);
 
+  // profileRes, courseRes, certificateRes, examReviewRes: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [profileRes, courseRes, certificateRes, examReviewRes] = await Promise.all([
     supabase.from("profiles").select("role").eq("id", user.id).maybeSingle(),
     supabase
@@ -224,7 +235,9 @@ export default async function AdminCourseReviewPage({
       .maybeSingle(),
   ]);
 
+  // examStatus: สถานะผลตรวจข้อสอบท้ายคอร์สที่ใช้แสดงป้ายและคำแนะนำ
   const examStatus = (examReviewRes.data?.exam_status ?? null) as "pending" | "approved" | "rejected" | null;
+  // examStatusChip: ข้อความและสีป้ายผลตรวจข้อสอบท้ายคอร์ส
   const examStatusChip =
     examStatus === "rejected"
       ? { text: "ถูกตีกลับ", className: "bg-[#FF5A3C]/10 text-[#EB4A2D]" }
@@ -243,7 +256,9 @@ export default async function AdminCourseReviewPage({
 
   if (!courseRes.data) notFound();
 
+  // course: ข้อมูลคอร์สที่ผูกกับรายการหรือหน้าที่กำลังแสดง ซึ่งอาจเป็น null หากอ่านไม่พบ
   const course = courseRes.data as unknown as CourseWithLessons;
+  // certificateSettings: การตั้งค่าใบประกาศนียบัตรที่โหลดแยกจากข้อมูลหลักของคอร์ส
   const certificateSettings = certificateRes.data as CourseCertificateSettings | null;
 
   // คัดเลือก Draft ล่าสุดของแต่ละบทเรียน
@@ -263,6 +278,7 @@ export default async function AdminCourseReviewPage({
       const readyDraft = sortedDrafts.find(
         (d) => d.status === "submitted" || d.status === "pending_review"
       );
+      // latestDraft: ฉบับร่างที่ถูกเลือกตามกติกาของส่วนนี้สำหรับแสดงเนื้อหาหรือสถานะ
       const latestDraft = readyDraft ?? sortedDrafts[0] ?? null;
 
       return {

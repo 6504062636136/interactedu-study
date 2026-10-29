@@ -1,3 +1,9 @@
+/**
+ * หน้าที่ของไฟล์: ฟอร์มเข้าสู่ระบบ ตรวจข้อมูลก่อนส่ง และนำผู้ใช้ไปหน้าตามบทบาท
+ * เส้นทาง: /login
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน ส่วน useRef เก็บค่าอ้างอิงที่ไม่สั่งแสดงผลใหม่
+ */
 "use client";
 
 import Link from "next/link";
@@ -11,14 +17,19 @@ interface LoginFieldErrors {
   password?: string;
 }
 
+// EMAIL_PATTERN: รูปแบบตรวจอีเมลเบื้องต้นก่อนส่งข้อมูลไปยังระบบยืนยันตัวตน
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// OFFLINE_MESSAGE: ข้อความที่ใช้แจ้งเมื่ออุปกรณ์ไม่มีการเชื่อมต่ออินเทอร์เน็ต
 const OFFLINE_MESSAGE = "ไม่มีการเชื่อมต่ออินเทอร์เน็ต กรุณาตรวจสอบสัญญาณ Wi-Fi หรือเน็ตมือถือ แล้วลองใหม่อีกครั้ง";
+// SYSTEM_ERROR_MESSAGE: ข้อความกลางเมื่อระบบไม่สามารถทำรายการได้ในขณะนี้
 const SYSTEM_ERROR_MESSAGE = "ระบบขัดข้องชั่วคราว ไม่สามารถเข้าสู่ระบบได้ในขณะนี้ กรุณาลองใหม่อีกครั้งในภายหลัง";
 // ใช้ข้อความกลางเดียวกันทั้งกรณีอีเมลไม่มีในระบบ และรหัสผ่านผิด — ไม่ระบุเจาะจงว่าจุดไหนผิด
 // เพื่อความปลอดภัย (ป้องกันการเดาว่าอีเมลไหนมีอยู่ในระบบจริง)
 const INVALID_CREDENTIALS_MESSAGE = "อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง";
+// RATE_LIMIT_MESSAGE: ข้อความเมื่อพยายามเข้าสู่ระบบถี่เกินกว่าระบบอนุญาต
 const RATE_LIMIT_MESSAGE = "คุณลองเข้าสู่ระบบหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่อีกครั้ง";
 
+/** ติดตามเหตุการณ์ออนไลน์และออฟไลน์ เรียก onChange เมื่อสถานะเปลี่ยน และคืนฟังก์ชันถอดตัวฟัง */
 function subscribeConnection(onChange: () => void): () => void {
   window.addEventListener("online", onChange);
   window.addEventListener("offline", onChange);
@@ -28,33 +39,49 @@ function subscribeConnection(onChange: () => void): () => void {
   };
 }
 
+/** จัดการฟอร์มเข้าสู่ระบบ การแจ้งข้อผิดพลาด และการตรวจสถานะบัญชีหลังยืนยันตัวตน */
 export default function LoginPage() {
+  // router: ตัวควบคุมการเปลี่ยนหน้าและรีเฟรชข้อมูลผ่าน Next.js บนเบราว์เซอร์
   const router = useRouter();
+  // email: อีเมลบัญชีที่ใช้แสดงหรือกรอกเพื่อยืนยันตัวตน; setEmail ใช้อัปเดตค่านี้
   const [email, setEmail] = useState<string>("");
+  // password: รหัสผ่านที่ผู้ใช้กรอกในฟอร์มยืนยันตัวตน; setPassword ใช้อัปเดตค่านี้
   const [password, setPassword] = useState<string>("");
+  // fieldErrors: ข้อความตรวจสอบข้อมูลแยกตามชื่อช่อง เพื่อแสดงข้อผิดพลาดใกล้ช่องกรอก; setFieldErrors ใช้อัปเดตค่านี้
   const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
+  // formError: ข้อความผิดพลาดระดับฟอร์มที่แสดงเมื่อส่งข้อมูลไม่สำเร็จ; setFormError ใช้อัปเดตค่านี้
   const [formError, setFormError] = useState<string | null>(null);
+  // isSubmitting: สถานะกำลังส่งฟอร์ม ใช้แสดงความคืบหน้าและควบคุมปุ่มส่ง; setIsSubmitting ใช้อัปเดตค่านี้
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  // isOffline: สถานะที่เบราว์เซอร์รายงานว่าไม่มีการเชื่อมต่ออินเทอร์เน็ต
   const isOffline = useSyncExternalStore(subscribeConnection, () => !navigator.onLine, () => false);
 
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = createClient();
+  // emailRef: อ้างถึงช่องอีเมลเพื่อย้ายโฟกัสเมื่อกรอกข้อมูลไม่ถูกต้อง
   const emailRef = useRef<HTMLInputElement>(null);
+  // passwordRef: อ้างถึงช่องรหัสผ่านเพื่อย้ายโฟกัสเมื่อกรอกข้อมูลไม่ถูกต้อง
   const passwordRef = useRef<HTMLInputElement>(null);
   // ref แบบ synchronous กันดับเบิลคลิก/กดรัวๆ ยิง request login ซ้ำ (state update เป็น async)
   const isSubmittingRef = useRef<boolean>(false);
 
+  /** อัปเดตอีเมลที่กรอกและล้างข้อความผิดพลาดของช่องอีเมล */
   const handleEmailChange = (e: ChangeEvent<HTMLInputElement>): void => {
     setEmail(e.target.value);
     setFieldErrors((prev) => (prev.email ? { ...prev, email: undefined } : prev));
   };
 
+  /** อัปเดตรหัสผ่านที่กรอกและล้างข้อความผิดพลาดของช่องรหัสผ่าน */
   const handlePasswordChange = (e: ChangeEvent<HTMLInputElement>): void => {
     setPassword(e.target.value);
     setFieldErrors((prev) => (prev.password ? { ...prev, password: undefined } : prev));
   };
 
+  /** ตรวจอีเมลและรหัสผ่านในฟอร์ม แล้วคืนข้อความผิดพลาดแยกตามช่อง */
   const validate = (): LoginFieldErrors => {
+    // errors: ข้อผิดพลาดแยกตามชื่อช่อง ซึ่งต้องแก้ให้ครบก่อนส่งฟอร์ม
     const errors: LoginFieldErrors = {};
+    // trimmedEmail: อีเมลที่ตัดช่องว่างหัวท้ายก่อนตรวจรูปแบบหรือส่งข้อมูล
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
       errors.email = "กรุณากรอกอีเมล";
@@ -67,6 +94,7 @@ export default function LoginPage() {
     return errors;
   };
 
+  /** แปลงข้อผิดพลาดที่รับมาเป็นข้อความภาษาไทยตามสาเหตุ เช่น เน็ตขาดหรือระบบไม่พร้อม */
   // แปล error จาก Supabase/เครือข่ายให้เป็นภาษาที่เข้าใจง่าย ไม่ใช้ศัพท์เทคนิค
   const toFriendlyMessage = (err: unknown): string => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -79,6 +107,7 @@ export default function LoginPage() {
         : typeof err === "object" && err !== null && "message" in err
           ? String((err as { message: unknown }).message)
           : String(err);
+    // message: ข้อความผิดพลาดดิบที่แปลงเป็นตัวพิมพ์เล็ก เพื่อเทียบรูปแบบก่อนเลือกข้อความแจ้งผู้ใช้
     const message = raw.toLowerCase();
 
     if (message.includes("invalid login credentials") || message.includes("invalid email or password")) {
@@ -98,6 +127,9 @@ export default function LoginPage() {
     return SYSTEM_ERROR_MESSAGE;
   };
 
+  /** ป้องกันการส่งซ้ำ เข้าสู่ระบบด้วย Supabase และตรวจโปรไฟล์เพื่อเลือกปลายทาง */
+  // ศึกษา 3.2.2.2: /login ส่ง email/password จาก Browser → signInWithPassword ของ Supabase Auth
+  // ฟังก์ชันเรา รับ event คืน Promise<void>; Auth สำเร็จยังต้องอ่าน role/สถานะบัญชีก่อนเลือก Dashboard
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
 
@@ -112,6 +144,7 @@ export default function LoginPage() {
       return;
     }
 
+    // errors: ข้อผิดพลาดแยกตามชื่อช่อง ซึ่งต้องแก้ให้ครบก่อนส่งฟอร์ม
     const errors = validate();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -140,7 +173,9 @@ export default function LoginPage() {
       }
 
       if (data.user) {
+        // user.id มาจาก Auth; ใช้ค้น profiles.id เพื่ออ่าน role/is_active; let เพราะ fallback อาจเปลี่ยนค่าภายหลัง
         let { data: profile, error: profileError } = await supabase
+          // from เลือกตาราง, select เลือกคอลัมน์, eq กรองค่าเท่ากัน และ single ต้องได้หนึ่งแถว; เป็น method จาก Supabase SDK
           .from("profiles")
           .select("role, is_active")
           .eq("id", data.user.id)
@@ -156,13 +191,16 @@ export default function LoginPage() {
           setFormError("ตรวจสอบสถานะบัญชีไม่สำเร็จ กรุณาลองใหม่");
           return;
         }
+        // ?. อ่านเมื่อ profile มีค่า; === เทียบค่าและชนิด: false จึง signOut ล้าง session ในเครื่อง แล้ว replace ไปหน้าบัญชีปิด
         if (profile?.is_active === false) {
+          // archiveState: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
           const { data: archiveState } = await supabase.from("profiles").select("archived_at").eq("id", data.user.id).maybeSingle();
           await supabase.auth.signOut({ scope: "local" });
           router.replace(archiveState?.archived_at ? "/account-inactive?reason=archived" : "/account-inactive");
           return;
         }
 
+        // router ของ Next.js: refresh โหลดข้อมูล Server ใหม่; push ด้านล่างเพิ่มหน้า Dashboard ในประวัติ ส่วน replace แทนหน้าปัจจุบัน
         router.refresh();
 
         if (profile?.role === "admin") {

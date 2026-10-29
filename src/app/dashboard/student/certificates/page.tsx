@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงใบประกาศนียบัตรของผู้เรียนพร้อมสถานะและลิงก์ดาวน์โหลด
+ * เส้นทาง: /dashboard/student/certificates
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -13,18 +18,23 @@ interface CertificateListRow {
   issued_at: string;
   courses: { title: string; slug: string } | null;
 }
+/** อ่านใบประกาศนียบัตรที่ผูกกับผู้ใช้ปัจจุบัน แล้วแสดงรายการหรือสถานะว่าง */
 export default async function CertificatesPage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?redirect=/dashboard/student/certificates");
 
+  // data, error: ผลอ่านข้อมูลใบประกาศนียบัตร พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data, error } = await supabase
     .from("certificates")
     .select("id, certificate_no, score_percentage, pass_percentage, status, issued_at, courses(title, slug)")
     .eq("user_id", user.id)
     .order("issued_at", { ascending: false });
+  // certificates: รายการใบประกาศนียบัตรที่อ่านมาเพื่อแสดงตามขอบเขตผู้ใช้ของหน้านี้
   const certificates = (data ?? []) as unknown as CertificateListRow[];
 
   return (
@@ -58,6 +68,7 @@ export default async function CertificatesPage(): Promise<ReactElement> {
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {certificates.map((certificate) => {
+            // issued: ระบุว่าใบประกาศนียบัตรอยู่ในสถานะออกแล้ว จึงแสดงส่วนดาวน์โหลดตามเงื่อนไขของหน้า
             const issued = certificate.status === "issued";
             return (
               <article key={certificate.id} className="rounded-2xl border border-[#0F1B3D]/[0.07] bg-white p-5">

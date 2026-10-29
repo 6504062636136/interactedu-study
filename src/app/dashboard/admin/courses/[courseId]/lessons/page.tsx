@@ -1,21 +1,31 @@
+/**
+ * หน้าที่ของไฟล์: แสดงบทเรียนและสถานะแพ็กเกจ SCORM ของคอร์สสำหรับแอดมิน
+ * เส้นทาง: /dashboard/admin/courses/[courseId]/lessons
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 // src/app/dashboard/admin/courses/[courseId]/lessons/page.tsx
 import Link from 'next/link';
 import { createClient } from '@/utils/supabase/server';
 import RegenerateScormButton from "@/components/RegenerateScormButton";
+/** โหลดคอร์สและบทเรียน แล้วแสดงรายการพร้อมเครื่องมือจัดการ SCORM */
 export default async function AdminCourseLessonsPage({
   params,
 }: {
   params: Promise<{ courseId: string }>;
 }) {
+  // courseId: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { courseId } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
+  // course: ผลอ่านข้อมูลคอร์ส
   const { data: course } = await supabase
     .from('courses')
     .select('id, title')
     .eq('id', courseId)
     .single();
 
+  // lessons, error: ผลอ่านข้อมูลบทเรียน พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: lessons, error } = await supabase
     .from('lessons')
     .select('id, title, video_url, is_scorm, scorm_entry_point, scorm_version')

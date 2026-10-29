@@ -5,6 +5,8 @@ function safeFileName(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
 
+// ศึกษา 3.2.2.15: ผู้เรียนเปิดลิงก์ certificateId=certificates.id; Route ตรวจ Auth/เจ้าของ (หรือ admin) และ status=issued
+// อ่าน pdf_path แล้ว download จาก private Storage certificates คืนไฟล์ PDF; ไม่มีสิทธิ์/ไม่พบ/เพิกถอน/Storage error คืน HTTP error
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ certificateId: string }> }

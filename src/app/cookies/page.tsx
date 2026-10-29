@@ -1,11 +1,18 @@
+/**
+ * หน้าที่ของไฟล์: แสดงนโยบายคุกกี้และคำอธิบายการใช้คุกกี้ของเว็บไซต์
+ * เส้นทาง: /cookies
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import AppBrand from "@/components/AppBrand";
 
+// metadata: ชื่อและคำอธิบายหน้าที่ Next.js ใช้สร้างข้อมูลในส่วน head ของเอกสาร
 export const metadata = {
   title: "นโยบายคุกกี้ | Interact Edu",
 };
 
+/** จัดหัวข้อ title และเนื้อหา children เป็นหนึ่งหมวดของหน้านโยบาย */
 function Section({ title, children }: { title: string; children: ReactElement | ReactElement[] }) {
   return (
     <section className="mb-8">
@@ -15,6 +22,7 @@ function Section({ title, children }: { title: string; children: ReactElement | 
   );
 }
 
+/** แสดงนโยบายคุกกี้และคำอธิบายการใช้คุกกี้ของเว็บไซต์ */
 export default function CookiesPage(): ReactElement {
   return (
     <div className="app-canvas min-h-screen w-full">

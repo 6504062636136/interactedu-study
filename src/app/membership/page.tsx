@@ -1,4 +1,9 @@
-﻿import Link from "next/link";
+﻿/**
+ * หน้าที่ของไฟล์: แสดงราคาแพ็กเกจ Plus สถานะสมาชิก และส่วนเริ่มชำระเงิน
+ * เส้นทาง: /membership
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
+import Link from "next/link";
 import type { ReactElement } from "react";
 import { ArrowLeft, ArrowRight, Banknote, BookOpen, Check, Clock3, ShieldCheck, Sparkles, Tag } from "lucide-react";
 import AppBrand from "@/components/AppBrand";
@@ -6,10 +11,15 @@ import MembershipPayment from "@/components/MembershipPayment";
 import { formatRemainingAccess } from "@/lib/courses/access-expiry";
 import { createClient } from "@/utils/supabase/server";
 
+/** โหลดข้อเสนอและสมาชิกที่ยังไม่หมดอายุ แล้วคำนวณว่าผู้ใช้สามารถชำระเงินได้หรือไม่ */
 export default async function MembershipPage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const { data: { user } } = await supabase.auth.getUser();
+  // now: เวลาปัจจุบันที่ใช้เทียบวันเริ่ม วันหมดอายุ หรือช่วงกิจกรรมในหน้านี้
   const now = new Date().toISOString();
+  // profileResult, offerResult, membershipResult: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [profileResult, offerResult, membershipResult] = await Promise.all([
     user
       ? supabase.from("profiles").select("role, is_active").eq("id", user.id).maybeSingle()
@@ -34,14 +44,21 @@ export default async function MembershipPage(): Promise<ReactElement> {
     console.error("[membership] Failed to load offer or membership", offerError?.message, membershipError?.message);
   }
 
+  // monthlyPrice: ราคาสมาชิก Plus รายเดือนที่แปลงเป็นตัวเลขจากการตั้งค่า
   const monthlyPrice = Number(offer?.monthly_price);
+  // annualPrice: ราคาสมาชิก Plus รายปีที่แปลงเป็นตัวเลขจากการตั้งค่า
   const annualPrice = Number(offer?.annual_price);
+  // annualRegularPrice: ราคารายปีปกติที่ใช้เปรียบเทียบกับราคาเสนอ
   const annualRegularPrice = Number(offer?.annual_regular_price);
+  // offerOpen: ระบุว่าข้อเสนอเปิดใช้งานและราคาที่ต้องใช้แสดงเป็นตัวเลขที่ถูกต้องครบถ้วน
   const offerOpen = !offerError && offer?.enabled && Number.isFinite(monthlyPrice) && monthlyPrice > 0
     && Number.isFinite(annualPrice) && annualPrice > 0
     && Number.isFinite(annualRegularPrice) && annualRegularPrice >= annualPrice;
+  // paymentReady: ระบุว่าการตั้งค่าฝั่งเซิร์ฟเวอร์ที่จำเป็นต่อการรับชำระเงินมีอยู่ครบตามเงื่อนไขนี้
   const paymentReady = Boolean(process.env.OMISE_SECRET_KEY && (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY));
+  // eligibleStudent: ระบุว่ามีผู้ใช้ที่เป็นผู้เรียน บัญชีใช้งานอยู่ และโหลดโปรไฟล์สำเร็จ
   const eligibleStudent = Boolean(user && !profileError && profile?.role === "student" && profile.is_active);
+  // canPay: ผลรวมเงื่อนไขผู้ซื้อ ข้อเสนอ การโหลดสมาชิก และความพร้อมระบบชำระเงิน
   const canPay = eligibleStudent && offerOpen && !membershipError && paymentReady;
   const expiresAt = membershipError ? null : membership?.expires_at ?? null;
 
@@ -107,7 +124,9 @@ export default async function MembershipPage(): Promise<ReactElement> {
             },
           ].map((plan) => {
             const annual = plan.durationMonths === 12;
+            // savingVsRegular: ส่วนต่างระหว่างราคารายปีปกติกับราคารายปีที่เสนอ
             const savingVsRegular = annual ? Math.max(0, annualRegularPrice - annualPrice) : 0;
+            // savingVsMonthly: ส่วนต่างระหว่างจ่ายรายเดือนครบ 12 เดือนกับแพ็กเกจรายปี
             const savingVsMonthly = annual ? Math.max(0, monthlyPrice * 12 - annualPrice) : 0;
             return (
               <article key={plan.durationMonths} className={`relative isolate flex min-w-0 flex-col rounded-[24px] border p-5 sm:p-7 ${annual ? "border-[#4267E4] bg-[linear-gradient(135deg,rgba(255,255,255,0.98)_0%,rgba(244,248,255,0.96)_56%,rgba(228,238,255,0.9)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,1),0_28px_65px_-25px_rgba(39,79,185,0.42)] backdrop-blur-xl" : "border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,27,61,0.05)]"}`}>

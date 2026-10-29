@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงฉบับร่างบทเรียน วิดีโอ เนื้อหา และคำถามเพื่อให้แอดมินตรวจ
+ * เส้นทาง: /admin/review/[draftId]
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 // import type { ReactElement } from "react";
 // import { notFound, redirect } from "next/navigation";
 // import { createClient } from "@/utils/supabase/server";
@@ -163,12 +168,15 @@ interface RawDraftDetail {
   } | null;
 }
 
+/** ตรวจบทบาท โหลดฉบับร่างและคำถามตาม draftId แล้วส่งข้อมูลให้ส่วนพิจารณาอนุมัติ */
 export default async function AdminReviewDetailPage({
   params,
 }: {
   params: Promise<{ draftId: string }>;
 }): Promise<ReactElement> {
+  // draftId: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { draftId } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
   // Step 1: เช็ค Auth User ก่อน
@@ -197,6 +205,7 @@ export default async function AdminReviewDetailPage({
   if (profileRes.data?.role !== "admin") redirect("/");
 
   const draft = draftRes.data;
+  // error: ข้อผิดพลาดปัจจุบันที่ใช้แจ้งให้ผู้ใช้ทราบในส่วนนี้
   const error = draftRes.error;
 
   console.log("[admin/review/detail] draft:", JSON.stringify(draft, null, 2));
@@ -206,8 +215,10 @@ export default async function AdminReviewDetailPage({
 
   const rawDraft = draft as unknown as RawDraftDetail;
   const lesson = rawDraft.lessons;
+  // course: ข้อมูลคอร์สที่ผูกกับรายการหรือหน้าที่กำลังแสดง ซึ่งอาจเป็น null หากอ่านไม่พบ
   const course = lesson ? (Array.isArray(lesson.courses) ? lesson.courses[0] : lesson.courses) : null;
 
+  // typedDraft: ข้อมูลฉบับร่างที่จัดรูปชื่อบทเรียน คอร์ส และผู้สร้างเพื่อใช้แสดงรายละเอียด
   const typedDraft = {
     id: rawDraft.id,
     title: lesson?.title ?? "ไม่พบชื่อบทเรียน",
@@ -217,6 +228,7 @@ export default async function AdminReviewDetailPage({
     courseTitle: course?.title ?? "ไม่พบชื่อคอร์ส",
   };
 
+  // typedQuestions: คำถามและตัวเลือกของฉบับร่างที่กำหนดชนิดข้อมูลสำหรับหน้าแสดงผล
   const typedQuestions = (questionsRes.data ?? []) as unknown as QuizQuestionRow[];
 
   return (

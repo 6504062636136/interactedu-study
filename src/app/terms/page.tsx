@@ -1,11 +1,18 @@
+/**
+ * หน้าที่ของไฟล์: แสดงข้อตกลงและเงื่อนไขการใช้บริการสำหรับผู้เรียนและผู้สอน
+ * เส้นทาง: /terms
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import AppBrand from "@/components/AppBrand";
 
+// metadata: ชื่อและคำอธิบายหน้าที่ Next.js ใช้สร้างข้อมูลในส่วน head ของเอกสาร
 export const metadata = {
   title: "ข้อตกลงและเงื่อนไขการใช้บริการ | Interact Edu",
 };
 
+/** จัดหัวข้อ title และเนื้อหา children เป็นหนึ่งหมวดของหน้านโยบาย */
 function Section({ title, children }: { title: string; children: ReactElement | ReactElement[] }) {
   return (
     <section className="mb-8">
@@ -15,6 +22,7 @@ function Section({ title, children }: { title: string; children: ReactElement | 
   );
 }
 
+/** แสดงข้อตกลงและเงื่อนไขการใช้บริการสำหรับผู้เรียนและผู้สอน */
 export default function TermsPage(): ReactElement {
   return (
     <div className="app-canvas min-h-screen w-full">

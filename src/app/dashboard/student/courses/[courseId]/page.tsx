@@ -1,4 +1,9 @@
-﻿import Link from "next/link";
+﻿/**
+ * หน้าที่ของไฟล์: หน้าภาพรวมคอร์สของผู้เรียน แสดงบทเรียน ความก้าวหน้า ข้อสอบ และใบประกาศนียบัตร
+ * เส้นทาง: /dashboard/student/courses/[courseId]
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Award, BookOpen, CheckCircle2, Clock3, Play } from "lucide-react";
 import { createClient } from "@/utils/supabase/server";
@@ -22,24 +27,32 @@ interface OverviewEnrollment extends LearningEnrollment {
   courses: { id: string; title: string; description: string | null; cover_image_url: string | null; category: string | null } | null;
 }
 
+/** แปลงวินาทีเป็นเวลาแบบนาที:วินาที โดยตัดค่าทศนิยมและป้องกันค่าติดลบ */
 function formatTime(seconds: number) {
   const value = Math.max(0, Math.floor(seconds));
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
 }
 
+/** ตรวจการลงทะเบียนที่ยังใช้ได้ แล้วโหลดบทเรียน ผลเรียน ข้อสอบ และเงื่อนไขใบประกาศนียบัตร */
 export default async function StudentCourseOverview({ params, searchParams }: { params: Promise<{ courseId: string }>; searchParams?: Promise<{ start?: string }> }) {
+  // courseId: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { courseId } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/login?redirect=/dashboard/student/courses/${courseId}`);
 
+  // enrollmentData, enrollmentError: ผลอ่านข้อมูลการลงทะเบียน พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: enrollmentData, error: enrollmentError } = await loadLearningEnrollments((includeStart) => supabase.from("enrollments")
     .select(`id, membership_order_id, ${includeStart ? "learning_started_at, " : ""}courses(id, title, description, cover_image_url, category)`)
     .eq("student_id", user.id).eq("course_id", courseId).eq("status", "approved")
     .or(`access_expires_at.is.null,access_expires_at.gt.${new Date().toISOString()}`).maybeSingle());
+  // enrollment: ข้อมูลการลงทะเบียนของผู้เรียนในคอร์สนี้ที่ใช้ตรวจสิทธิ์และเชื่อมประวัติการเรียน
   const enrollment = enrollmentData as unknown as OverviewEnrollment | null;
   if (enrollmentError) throw new Error("โหลดข้อมูลการลงทะเบียนไม่สำเร็จ");
   if (!enrollment) notFound();
+  // course: ข้อมูลคอร์สที่ผูกกับรายการหรือหน้าที่กำลังแสดง ซึ่งอาจเป็น null หากอ่านไม่พบ
   const course = Array.isArray(enrollment.courses) ? enrollment.courses[0] : enrollment.courses;
   if (!course) return (
     <div className="rounded-2xl bg-amber-50 p-6 text-sm text-amber-800">
@@ -48,6 +61,7 @@ export default async function StudentCourseOverview({ params, searchParams }: { 
     </div>
   );
 
+  // modulesResult, trackingResult, settingsResult, certificateResult, attemptResult, studyTimeResult: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [modulesResult, trackingResult, settingsResult, certificateResult, attemptResult, studyTimeResult] = await Promise.all([
     supabase.from("modules").select("id, title, order_index, lessons(id, title, order_index, video_duration_seconds, is_published, scorm_source, scorm_manifest)").eq("course_id", courseId).order("order_index"),
     supabase.from("scorm_tracking").select("lesson_id, lesson_status, video_completed, last_accessed, completed_scos, cmi_data").eq("enrollment_id", enrollment.id),
@@ -57,26 +71,44 @@ export default async function StudentCourseOverview({ params, searchParams }: { 
     supabase.from("student_study_time").select("total_seconds").eq("enrollment_id", enrollment.id).maybeSingle(),
   ]);
   if (modulesResult.error) throw new Error("โหลดรายการบทเรียนไม่สำเร็จ");
+  // rawModules: ข้อมูลโมดูลและบทเรียนจากฐานข้อมูลก่อนกรองรายการที่ยังไม่เผยแพร่
   const rawModules = (modulesResult.data ?? []) as unknown as Module[];
+  // unpublishedLessons: จำนวนบทเรียนที่ยังไม่เผยแพร่ ใช้ป้องกันการถือว่าเรียนครบทั้งคอร์สก่อนเนื้อหาพร้อม
   const unpublishedLessons = rawModules.flatMap((module) => module.lessons ?? []).filter((lesson) => !lesson.is_published).length;
+  // modules: โมดูลและบทเรียนภายในคอร์สที่จัดเตรียมไว้สำหรับส่วนนี้
   const modules = rawModules.map((module) => ({ ...module, lessons: [...(module.lessons ?? [])].filter((lesson) => lesson.is_published).sort((a, b) => a.order_index - b.order_index) })).filter((module) => module.lessons.length);
+  // lessons: บทเรียนที่ใช้แสดงหรือเป็นฐานคำนวณในส่วนนี้
   const lessons = modules.flatMap((module) => module.lessons);
+  // tracking: ประวัติการเรียนที่ใช้คำนวณความก้าวหน้าในส่วนนี้
   const tracking = (trackingResult.data ?? []) as unknown as StudentTracking[];
+  // progress: ผลสรุปจากบริการกลาง รวมจำนวนบทเรียนที่จบ เปอร์เซ็นต์ และบทเรียนสำหรับเรียนต่อ
   const progress = summarizeStudentProgress(lessons, tracking);
+  // trackingAvailable: ระบุว่าโหลด tracking สำเร็จ จึงใช้ตัดสินเงื่อนไขความสำเร็จของคอร์สได้
   const trackingAvailable = !trackingResult.error;
+  // started: ระบุว่ามีประวัติเริ่มเรียนแล้วตามข้อมูลของรายการที่กำลังพิจารณา
   const started = hasStartedLearning({ ...enrollment, scorm_tracking: tracking, student_study_time: studyTimeResult.data });
+  // allLessonsComplete: ระบุว่า tracking พร้อม เรียนครบตามบริการกลาง และไม่มีบทเรียนที่ยังไม่เผยแพร่
   const allLessonsComplete = trackingAvailable && progress.allComplete && unpublishedLessons === 0;
+  // resume: บทเรียนที่บริการสรุปความก้าวหน้าเลือกให้เรียนต่อ
   const resume = progress.resumeLesson;
   // Loading/prefetching the overview never writes learning state. Only the
   // mounted player records a first start after this authorized redirect.
   if ((await searchParams)?.start === "1" && trackingAvailable && resume) redirect(`/play/${courseId}/${resume.id}`);
+  // library: ผลโหลดคลังคอร์สที่บันทึกไว้ ใช้แยกการเก็บคอร์สออกจากสิทธิ์ที่ได้ด้วยสมาชิก
   const library = enrollment.membership_order_id ? await loadSavedCourseEnrollments(supabase, user.id) : null;
+  // resumeSeconds: ตำแหน่งเล่นต่อเป็นวินาทีสำหรับบทเรียน SCORM ที่ระบบสร้างเอง
   const resumeSeconds = resume?.scorm_source === "generated" ? getResumeSeconds(progress.byLesson.get(resume.id)) : 0;
+  // videoDuration: ข้อความความยาววิดีโอรวมของคอร์สที่จัดรูปแบบแล้วสำหรับแสดงผล
   const videoDuration = formatCourseVideoDuration(lessons.reduce((sum, lesson) => sum + (lesson.video_duration_seconds || 0), 0));
+  // certificate: ใบประกาศนียบัตรของผู้เรียนในคอร์สนี้ที่โหลดได้ หรือ null เมื่อยังไม่มี
   const certificate = certificateResult.data;
+  // attempt: ผลสอบครั้งล่าสุดที่ query เลือกมาใช้แสดงสถานะการสอบของผู้เรียน
   const attempt = attemptResult.data;
+  // passed: ระบุว่าผลสอบที่อ่านมาแจ้งว่าผ่านแล้วหรือไม่
   const passed = attempt?.passed === true;
+  // certificateEnabled: สถานะเปิดใช้งานการออกใบประกาศนียบัตรของคอร์ส
   const certificateEnabled = settingsResult.data?.certificate_enabled === true;
+  // passPercentage: เกณฑ์ผ่านเป็นเปอร์เซ็นต์ที่ใช้แสดงหรือคำนวณเงื่อนไขสอบผ่าน
   const passPercentage = Number(settingsResult.data?.certificate_pass_percentage ?? 70);
 
   return (
@@ -128,9 +160,13 @@ export default async function StudentCourseOverview({ params, searchParams }: { 
             <h3 className="mb-2 text-sm font-bold text-slate-600">{module.title}</h3>
             <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">
               {module.lessons.map((lesson) => {
+                // record: tracking ของบทเรียนที่กำลังสร้างแถวแสดงผล
                 const record = progress.byLesson.get(lesson.id);
+                // complete: ระบุว่า tracking ของบทเรียนแถวนี้ผ่านเกณฑ์เรียนจบของบริการกลางแล้วหรือไม่
                 const complete = isLessonComplete(record);
+                // started: ระบุว่ามีประวัติเริ่มเรียนแล้วตามข้อมูลของรายการที่กำลังพิจารณา
                 const started = !!record?.last_accessed || getResumeSeconds(record) > 0;
+                // active: ระบุว่าแถวนี้เป็นบทเรียนที่ควรเรียนต่อและยังเรียนไม่จบ เพื่อเน้นพื้นหลังในรายการ
                 const active = !complete && resume?.id === lesson.id && progress.started;
                 return <Link key={lesson.id} href={`/play/${courseId}/${lesson.id}`} className={`flex flex-wrap items-center gap-3 p-4 transition-colors hover:bg-blue-50 ${active ? "bg-blue-50/60" : ""}`}>
                   <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${complete ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{complete ? <CheckCircle2 size={18} /> : <Play size={16} />}</span>

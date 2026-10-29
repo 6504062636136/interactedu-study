@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createFetchWithTimeout } from "@/utils/supabase/fetch-with-timeout";
 
+// Helper ของเราใน Server: await cookies() ของ Next.js แล้วคืน Supabase client จาก @supabase/ssr ที่ใช้ session ของ request
 export async function createClient({ timeoutMs = 10000 }: { timeoutMs?: number } = {}) {
   const cookieStore = await cookies();
 

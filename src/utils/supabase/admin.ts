@@ -2,6 +2,8 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 
+// Helper ของเราใน Server คืน Supabase SDK client ที่มีสิทธิ์ระบบ; server-only กัน import ไป Browser
+// caller ต้องตรวจ Auth/role/เจ้าของก่อนใช้ เพราะ client นี้มีสิทธิ์ข้าม RLS และไม่ได้ยืนยันสิทธิ์ผู้ใช้ให้เอง
 export function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serverSecretKey =

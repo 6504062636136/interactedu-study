@@ -75,6 +75,8 @@ export default function CertificateSettingsForm({
     setMessage(null);
   }
 
+  // ศึกษา 3.2.2.15: ครูเจ้าของคอร์ส/admin เปลี่ยนชื่อองค์กร/ผู้ลงนาม/ชื่อใบรับรองใน Browser แล้ว PATCH certificate-settings
+  // helper ของเราคืน boolean ให้การบันทึกหน้าคอร์สใช้ต่อ; เก็บใน courses.certificate_* และใช้ตอนสร้าง PDF ใบใหม่
   async function saveSettings(showFeedback = true): Promise<boolean> {
     if (saving || uploading || removingLogo) return false;
     const numericPassPercentage = Number(passPercentage);
@@ -117,6 +119,7 @@ export default function CertificateSettingsForm({
 
   const workspaceSaving = useCourseWorkspaceSave("certificate", () => saveSettings(false));
 
+  // ผู้ใช้เลือกไฟล์ → ส่ง FormData ชื่อ logo ไป POST certificate-logo; Server ตรวจรูป/สิทธิ์แล้วเก็บ certificate-assets กับ path ใน courses
   async function uploadLogo(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
     event.target.value = "";

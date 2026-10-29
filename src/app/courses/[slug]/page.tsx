@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงรายละเอียด เนื้อหาบทเรียน รีวิว และปุ่มเข้าเรียนของคอร์สที่เลือก
+ * เส้นทาง: /courses/[slug]
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -47,6 +52,7 @@ interface CourseReviewRow {
   student_avatar_url: string | null;
 }
 
+// categoryColors: ตารางคลาสสีที่ใช้แสดงป้ายหมวดหมู่คอร์ส
 const categoryColors: Record<string, string> = {
   Development: "bg-[#FF5A3C] text-white",
   Design: "bg-[#7C5CFF] text-white",
@@ -54,19 +60,25 @@ const categoryColors: Record<string, string> = {
   Marketing: "bg-[#FFCB47] text-[#0F1B3D]",
 };
 
+/** คืนคลาสสีป้ายหมวดหมู่ หรือสีเริ่มต้นเมื่อไม่มีหมวดหมู่ที่ตรงกัน */
 function getCategoryColor(category: string | null): string {
   if (!category) return "bg-[#0F1B3D]/10 text-[#0F1B3D]";
   return categoryColors[category] ?? "bg-[#0F1B3D]/10 text-[#0F1B3D]";
 }
 
+/** แปลงจำนวนวินาทีเป็นข้อความชั่วโมง นาที และวินาทีสำหรับแสดงความยาวคอร์ส */
 // [แก้บั๊ก: หน้านี้เคยปัดทุกค่าต่ำกว่า 1 ชม. เป็น "< 1 ชั่วโมง" หมด] ตอนนี้คอลัมน์
 // lessons.video_duration_seconds เริ่มมีค่าจริงแล้ว (ดู saveLessonDraft/updateLessonDraft) แต่บทเรียน
 // ส่วนใหญ่ตอนนี้ยาวแค่หลักนาที/วินาที (วิดีโอทดสอบ) ทำให้โดนปัดจนดูเหมือนยังไม่ได้แก้ — เปลี่ยนมาใช้
 // สูตรเดียวกับ app/page.tsx และ CoursesExplorer.tsx (แสดงวินาที/นาที/ชั่วโมงตามจริง) ให้ตรงกันทั้งเว็บ
 function formatDuration(seconds: number): string {
+  // totalSeconds: จำนวนวินาทีที่ปัดเป็นจำนวนเต็มก่อนแยกเป็นหน่วยเวลา
   const totalSeconds = Math.round(seconds);
+  // hours: จำนวนชั่วโมงเต็มของช่วงเวลาที่กำลังจัดรูปแบบ
   const hours = Math.floor(totalSeconds / 3600);
+  // minutes: จำนวนนาทีที่ใช้ประกอบข้อความเวลาของฟังก์ชันนี้
   const minutes = Math.floor((totalSeconds % 3600) / 60);
+  // secs: จำนวนวินาทีที่เหลือหลังแยกชั่วโมงและนาที
   const secs = totalSeconds % 60;
 
   if (hours > 0) {
@@ -78,11 +90,13 @@ function formatDuration(seconds: number): string {
   return `${secs} วินาที`;
 }
 
+/** จัดรูปแบบราคาสำหรับแสดงเป็นเงินบาทตามรูปแบบภาษาไทย */
 function formatPrice(price: number): string {
   if (price === 0) return "ฟรี";
   return `฿${price.toLocaleString("th-TH")}`;
 }
 
+/** แสดงแถบนำทางจากรายละเอียดคอร์สกลับไปหน้าแรกหรือหน้ารวมคอร์ส */
 function DetailNavbar(): ReactElement {
   return (
     <header className="app-topbar sticky top-0 z-50">
@@ -101,6 +115,7 @@ function DetailNavbar(): ReactElement {
   );
 }
 
+/** แสดงสถิติหนึ่งรายการ โดย label เป็นชื่อสถิติและ value เป็นค่าที่ต้องการแสดง */
 function StatItem({ label, value }: { label: string; value: string }): ReactElement {
   return (
     <div>
@@ -110,6 +125,7 @@ function StatItem({ label, value }: { label: string; value: string }): ReactElem
   );
 }
 
+/** ส่งข้อมูลคอร์สและ access ให้ปุ่มร่วมที่เลือกการสมัคร เก็บคอร์ส หรือเข้าเรียนตามสิทธิ์ */
 function EnrollCta({
   course,
   access,
@@ -129,14 +145,18 @@ function EnrollCta({
   );
 }
 
+/** อ่าน slug จาก URL แล้วโหลดคอร์สที่เผยแพร่ บทเรียน สิทธิ์เข้าเรียน และรีวิว */
 export default async function CourseDetailPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }): Promise<ReactElement> {
+  // slug: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { slug } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
+  // course, error: ผลอ่านข้อมูลคอร์ส พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: course, error } = await supabase
     .from("courses")
     .select("id, title, slug, description, cover_image_url, category, price, course_code")
@@ -148,6 +168,7 @@ export default async function CourseDetailPage({
     notFound();
   }
 
+  // typedCourse: ข้อมูลคอร์สที่กำหนดชนิดให้ตรงกับโครงสร้างที่หน้ารายละเอียดใช้งาน
   const typedCourse = course as Course;
 
   // ดึงเนื้อหาคอร์สจริงจาก modules + lessons แทนการใช้คอลัมน์ hardcode
@@ -162,20 +183,26 @@ export default async function CourseDetailPage({
     console.error("Failed to fetch modules:", modulesError.message);
   }
 
+  // modules: โมดูลและบทเรียนภายในคอร์สที่จัดเตรียมไว้สำหรับส่วนนี้
   const modules: ModuleRow[] = (modulesData ?? []) as unknown as ModuleRow[];
 
+  // totalDurationSeconds: ความยาววิดีโอทุกบทเรียนในคอร์สรวมกัน หน่วยวินาที
   const totalDurationSeconds = modules.reduce(
     (sum, m) => sum + m.lessons.reduce((s, l) => s + (l.video_duration_seconds ?? 0), 0),
     0
   );
+  // totalLessons: จำนวนบทเรียนที่นำมาคำนวณหรือแสดงในส่วนนี้
   const totalLessons = modules.reduce((sum, m) => sum + m.lessons.length, 0);
 
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // access: สถานะสิทธิ์คอร์ส การเริ่มเรียน และการเก็บเข้าคลังของผู้ใช้ปัจจุบัน
   let access: CourseAccessActionsProps | null = null;
   if (user) {
+    // enrollment: ผลอ่านข้อมูลการลงทะเบียน
     const { data: enrollment } = await loadLearningEnrollments((includeStart) => supabase
       .from("enrollments")
       .select(`id, membership_order_id, ${includeStart ? "learning_started_at, " : ""}scorm_tracking(lesson_id, last_accessed, video_completed, lesson_status, completed_scos, cmi_data), student_study_time(total_seconds)`)
@@ -187,6 +214,7 @@ export default async function CourseDetailPage({
 
     if (enrollment) {
       const row = enrollment as unknown as LearningEnrollment & { id: string };
+      // library: ผลโหลดคลังคอร์สที่บันทึกไว้ ใช้แยกการเก็บคอร์สออกจากสิทธิ์ที่ได้ด้วยสมาชิก
       const library = await loadSavedCourseEnrollments(supabase, user.id);
       access = {
         courseId: typedCourse.id, slug: typedCourse.slug, hasAccess: true,
@@ -210,6 +238,7 @@ export default async function CourseDetailPage({
     console.error("Failed to fetch course reviews:", reviewsError.message);
   }
 
+  // reviews: รีวิวที่แปลงชื่อฟิลด์จากฐานข้อมูลให้ตรงกับ props ของส่วนแสดงรีวิว
   const reviews: CourseReviewItem[] = ((reviewsData ?? []) as CourseReviewRow[]).map((r) => ({
     id: r.id,
     rating: r.rating,
@@ -222,7 +251,9 @@ export default async function CourseDetailPage({
     studentAvatarUrl: r.student_avatar_url,
   }));
 
+  // reviewCount: จำนวนรีวิวที่ใช้แสดงและเป็นตัวหารคำนวณคะแนนเฉลี่ย
   const reviewCount = reviews.length;
+  // avgRating: คะแนนเฉลี่ยจากรีวิว โดยใช้ศูนย์เมื่อยังไม่มีรีวิว
   const avgRating = reviewCount > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviewCount : 0;
 
   return (

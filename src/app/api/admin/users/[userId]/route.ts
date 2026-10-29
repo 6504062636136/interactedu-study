@@ -22,6 +22,8 @@ function optionalText(value: unknown, maximum: number): string | null | undefine
   return text.length <= maximum ? text || null : undefined;
 }
 
+// ศึกษา 3.2.2.19: AdminUserProfileForm ส่ง userId เป้าหมายกับข้อมูล 4 ช่องเข้า Route ฝั่ง Server คืน {profile} หรือ HTTP error
+// actor จาก getUser คือคนแก้; ตรวจ profiles.role=admin ก่อนใช้ admin client แก้ profiles และ Auth metadata ของ userId
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
@@ -116,6 +118,7 @@ export async function PATCH(
     return NextResponse.json({ error: profileUpdateError.message }, { status: 500 });
   }
 
+  // ?? ใช้ {} เมื่อไม่มี metadata; ...previousMetadata คงฟิลด์เดิมแล้วทับ full_name; ถ้า Auth update พลาด ช่วงถัดไปพยายามคืนโปรไฟล์เดิม
   const previousMetadata = authData.user.user_metadata ?? {};
   const { error: authUpdateError } = await admin.auth.admin.updateUserById(userId, {
     user_metadata: { ...previousMetadata, full_name: fullName },

@@ -1,36 +1,53 @@
+/**
+ * หน้าที่ของไฟล์: แสดงคอร์สทั้งหมดให้แอดมินค้นหาและกรองสถานะการเผยแพร่
+ * เส้นทาง: /dashboard/admin/courses
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import CourseStatusTabs, { type CourseStatusFilter } from "./components/CourseStatusTabs";
 import AdminCourseCard from "./components/AdminCourseCard";
 
+// VALID_STATUSES: สถานะที่ยอมรับจาก query string เพื่อให้ตัวกรองใช้เฉพาะค่าที่หน้ารองรับ
 const VALID_STATUSES: CourseStatusFilter[] = ["all", "published", "pending", "draft", "rejected", "archived"];
 
+/** อ่านตัวกรองจาก URL โหลดคอร์สและชื่อผู้สร้าง แล้วนับและกรองรายการที่แสดง */
 export default async function AdminCoursesPage({
   searchParams,
 }: {
   searchParams: Promise<{ status?: string; q?: string }>;
 }): Promise<ReactElement> {
+  // status, q: ค่าจาก query string สำหรับตัวกรอง ข้อความผลลัพธ์ หรือโหมดแก้ไขของหน้า
   const { status, q } = await searchParams;
+  // activeStatus: สถานะที่ผ่านการตรวจและถูกเลือกไว้สำหรับกรองหรือเปิดแท็บ
   const activeStatus = VALID_STATUSES.includes(status as CourseStatusFilter)
     ? (status as CourseStatusFilter)
     : "all";
+  // searchTerm: คำค้นปัจจุบันที่ใช้กรองรายการ โดยปรับรูปแบบก่อนเปรียบเทียบ
   const searchTerm = q?.trim().toLocaleLowerCase("th-TH") ?? "";
 
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
+  // allCourses, error: ผลอ่านข้อมูลคอร์ส พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: allCourses, error } = await supabase
     .from("courses")
     .select("id, course_code, title, category, description, status, price, cover_image_url, created_at, created_by")
     .order("created_at", { ascending: false });
 
+  // courses: รายการคอร์สที่ใช้แสดงหรือคำนวณในหน้านี้
   const courses = allCourses ?? [];
+  // creatorIds: รหัสผู้สร้างคอร์สที่ไม่ซ้ำกันสำหรับอ่านชื่อมาแสดง
   const creatorIds = [...new Set(courses.map((course) => course.created_by).filter((id): id is string => Boolean(id)))];
+  // creators, creatorsError: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้ พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: creators, error: creatorsError } = creatorIds.length
     ? await supabase.from("profiles").select("id, full_name").in("id", creatorIds)
     : { data: [], error: null };
+  // creatorNames: จับคู่รหัสผู้สร้างคอร์สกับชื่อ เพื่อนำไปเติมในรายการคอร์ส
   const creatorNames = new Map((creators ?? []).map((profile) => [profile.id, profile.full_name ?? "ไม่ระบุชื่อ"]));
 
+  // counts: จำนวนคอร์สแยกตามสถานะสำหรับตัวเลขบนแท็บ
   const counts = {
     all: courses.length,
     published: courses.filter((c) => c.status === "published").length,
@@ -40,8 +57,11 @@ export default async function AdminCoursesPage({
     archived: courses.filter((c) => c.status === "archived").length,
   };
 
+  // filteredCourses: คอร์สที่ผ่านทั้งสถานะที่เลือกและคำค้นจากรหัส ชื่อ หรือหมวดหมู่
   const filteredCourses = courses.filter((course) => {
+    // matchesStatus: ผลตรวจว่าสถานะรายการตรงกับตัวกรองหรือเลือกแสดงทั้งหมด
     const matchesStatus = activeStatus === "all" || course.status === activeStatus;
+    // searchableText: ข้อความรวมรหัส ชื่อ และหมวดหมู่ที่แปลงเป็นตัวพิมพ์เล็กไว้เทียบคำค้น
     const searchableText = `${course.course_code ?? ""} ${course.title ?? ""} ${course.category ?? ""}`.toLocaleLowerCase("th-TH");
     return matchesStatus && (!searchTerm || searchableText.includes(searchTerm));
   });

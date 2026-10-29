@@ -1,3 +1,9 @@
+/**
+ * หน้าที่ของไฟล์: แสดงและนำคอร์สออกจากรายการโปรดของผู้เรียน
+ * เส้นทาง: /dashboard/student/favorites
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน
+ */
 // app/dashboard/student/favorites/page.tsx
 "use client";
 
@@ -7,6 +13,7 @@ import { Heart } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { DEFAULT_COURSE_COVER_URL } from "@/lib/constants/course-cover";
 
+// supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
 const supabase = createClient();
 
 interface FavoriteCourse {
@@ -15,15 +22,21 @@ interface FavoriteCourse {
   cover_image_url: string | null;
 }
 
+/** เก็บรายการคอร์สโปรด โหลดข้อมูลเมื่อเปิดหน้า และอัปเดตรายการเมื่อนำคอร์สออก */
 export default function FavoriteCoursesPage(): ReactElement {
+  // courses: รายการคอร์สที่ใช้แสดงหรือคำนวณในหน้านี้; setCourses ใช้อัปเดตค่านี้
   const [courses, setCourses] = useState<FavoriteCourse[]>([]);
+  // isLoading: สถานะกำลังอ่านข้อมูล ใช้สลับส่วนโหลดและเนื้อหาจริง; setIsLoading ใช้อัปเดตค่านี้
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    /** อ่านผู้ใช้แล้วโหลด course_favorites พร้อมข้อมูลคอร์สสำหรับแสดงการ์ด */
     async function load() {
+      // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setIsLoading(false); return; }
 
+      // data, error: ผลอ่านข้อมูลคอร์สโปรด พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
       const { data, error } = await supabase
         .from("course_favorites")
         .select("course_id, courses(id, title, cover_image_url)")
@@ -42,7 +55,9 @@ export default function FavoriteCoursesPage(): ReactElement {
     void load();
   }, []);
 
+  /** ลบรายการโปรดของผู้ใช้ตาม courseId แล้วนำการ์ดนั้นออกจากสถานะในหน้า */
   async function handleRemove(courseId: string) {
+    // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 

@@ -95,6 +95,8 @@ export async function GET(
   });
 }
 
+// ศึกษา 3.2.2.15: Browser ส่ง FormData logo; Server ตรวจเจ้าของ/admin, ขนาดไม่เกิน 2 MB และลายเซ็นไฟล์ PNG/JPG
+// อัปโหลด private Storage certificate-assets ที่ courseId/logo.* แล้ว update courses.certificate_logo_path; คืน path หรือ HTTP error
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ courseId: string }> }

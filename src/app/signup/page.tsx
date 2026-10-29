@@ -1,3 +1,9 @@
+/**
+ * หน้าที่ของไฟล์: ฟอร์มสมัครบัญชีผู้เรียนหรือผู้สอน พร้อมตรวจข้อมูลและแจ้งการยืนยันอีเมล
+ * เส้นทาง: /signup
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน ส่วน useRef เก็บค่าอ้างอิงที่ไม่สั่งแสดงผลใหม่
+ */
 "use client";
 
 import { useState, useRef, useSyncExternalStore, type FormEvent, type ChangeEvent } from "react";
@@ -16,6 +22,7 @@ interface SignUpFormState {
 
 type FieldErrors = Partial<Record<keyof SignUpFormState, string>>;
 
+// initialFormState: ค่าเริ่มต้นของชื่อ อีเมล รหัสผ่าน และการยืนยันรหัสผ่านในฟอร์มสมัคร
 const initialFormState: SignUpFormState = {
   fullName: "",
   email: "",
@@ -28,8 +35,10 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // อนุญาตตัวอักษรไทย/อังกฤษ และเว้นวรรค ห้ามมีตัวเลข/สัญลักษณ์แปลกๆ
 const NAME_PATTERN = /^[a-zA-Zก-๙\s.'-]+$/;
 
+// OFFLINE_MESSAGE: ข้อความที่ใช้แจ้งเมื่ออุปกรณ์ไม่มีการเชื่อมต่ออินเทอร์เน็ต
 const OFFLINE_MESSAGE = "ไม่มีการเชื่อมต่ออินเทอร์เน็ต กรุณาตรวจสอบสัญญาณเน็ตของคุณ";
 
+/** ติดตามเหตุการณ์ออนไลน์และออฟไลน์ เรียก onChange เมื่อสถานะเปลี่ยน และคืนฟังก์ชันถอดตัวฟัง */
 function subscribeConnection(onChange: () => void): () => void {
   window.addEventListener("online", onChange);
   window.addEventListener("offline", onChange);
@@ -39,24 +48,38 @@ function subscribeConnection(onChange: () => void): () => void {
   };
 }
 
+/** เก็บข้อมูลสมัครและบทบาท ตรวจฟอร์ม แล้วแสดงผลคำขอสมัครบัญชี */
 export default function CreateAccountPage() {
+  // useState ของ React เก็บค่าฟอร์มใน Browser; setForm เปลี่ยนค่าแล้วให้ React วาดหน้าจอใหม่
   const [form, setForm] = useState<SignUpFormState>(initialFormState);
+  // role: บทบาทบัญชีที่ใช้เลือกเส้นทางหรือส่งพร้อมข้อมูลสมัคร; setRole ใช้อัปเดตค่านี้
   const [role, setRole] = useState<Role>("student");
+  // fieldErrors: ข้อความตรวจสอบข้อมูลแยกตามชื่อช่อง เพื่อแสดงข้อผิดพลาดใกล้ช่องกรอก; setFieldErrors ใช้อัปเดตค่านี้
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  // formError: ข้อความผิดพลาดระดับฟอร์มที่แสดงเมื่อส่งข้อมูลไม่สำเร็จ; setFormError ใช้อัปเดตค่านี้
   const [formError, setFormError] = useState<string | null>(null);
+  // successEmail: อีเมลที่สมัครสำเร็จ ใช้ในข้อความแนะนำให้ตรวจกล่องจดหมาย; setSuccessEmail ใช้อัปเดตค่านี้
   const [successEmail, setSuccessEmail] = useState<string | null>(null);
+  // isSubmitting: สถานะกำลังส่งฟอร์ม ใช้แสดงความคืบหน้าและควบคุมปุ่มส่ง; setIsSubmitting ใช้อัปเดตค่านี้
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  // isOffline: สถานะที่เบราว์เซอร์รายงานว่าไม่มีการเชื่อมต่ออินเทอร์เน็ต
   const isOffline = useSyncExternalStore(subscribeConnection, () => !navigator.onLine, () => false);
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = createClient();
   // ref แยกจาก isSubmitting state เพราะ state update เป็น async — ดับเบิลคลิกเร็วๆ อาจมี
   // handleSubmit ตัวที่สองเริ่มทำงานก่อน re-render จะ disable ปุ่มจริง เช็ค ref ตัวนี้ก่อนเลย
   // เพื่อกันยิง request ซ้ำแบบ synchronous ทันทีที่ event ที่สองเข้ามา
   const isSubmittingRef = useRef<boolean>(false);
 
+  // fullNameRef: อ้างถึงช่องชื่อเพื่อย้ายโฟกัสเมื่อกรอกข้อมูลไม่ถูกต้อง
   const fullNameRef = useRef<HTMLInputElement>(null);
+  // emailRef: อ้างถึงช่องอีเมลเพื่อย้ายโฟกัสเมื่อกรอกข้อมูลไม่ถูกต้อง
   const emailRef = useRef<HTMLInputElement>(null);
+  // passwordRef: อ้างถึงช่องรหัสผ่านเพื่อย้ายโฟกัสเมื่อกรอกข้อมูลไม่ถูกต้อง
   const passwordRef = useRef<HTMLInputElement>(null);
+  // confirmPasswordRef: อ้างถึงช่องยืนยันรหัสผ่านเพื่อย้ายโฟกัสเมื่อกรอกข้อมูลไม่ถูกต้อง
   const confirmPasswordRef = useRef<HTMLInputElement>(null);
+  // fieldRefs: จับคู่ชื่อช่องกับ ref เพื่อย้ายโฟกัสไปยังช่องที่กรอกไม่ถูกต้อง
   const fieldRefs: Record<keyof SignUpFormState, React.RefObject<HTMLInputElement | null>> = {
     fullName: fullNameRef,
     email: emailRef,
@@ -66,6 +89,7 @@ export default function CreateAccountPage() {
   // ลำดับที่ต้อง auto-focus ไปช่องแรกสุดที่มีปัญหา (บนลงล่างตามหน้าฟอร์ม)
   const FIELD_ORDER: (keyof SignUpFormState)[] = ["fullName", "email", "password", "confirmPassword"];
 
+  /** สร้างตัวจัดการกรอกข้อมูลตามชื่อ field และล้างข้อผิดพลาดของช่องที่กำลังแก้ไข */
   const handleChange =
     (field: keyof SignUpFormState) =>
     (e: ChangeEvent<HTMLInputElement>): void => {
@@ -79,9 +103,12 @@ export default function CreateAccountPage() {
       });
     };
 
+  /** ตรวจชื่อ อีเมล รหัสผ่าน และการยืนยันรหัสผ่าน แล้วคืนข้อผิดพลาดแยกตามช่อง */
   const validate = (): FieldErrors => {
+    // errors: ข้อผิดพลาดแยกตามชื่อช่อง ซึ่งต้องแก้ให้ครบก่อนส่งฟอร์ม
     const errors: FieldErrors = {};
 
+    // trimmedName: ชื่อที่ตัดช่องว่างหัวท้ายก่อนตรวจความครบถ้วน
     const trimmedName = form.fullName.trim();
     if (!trimmedName) {
       errors.fullName = "กรุณากรอกชื่อและนามสกุล";
@@ -91,6 +118,7 @@ export default function CreateAccountPage() {
       errors.fullName = "ชื่อและนามสกุลต้องเป็นตัวอักษรเท่านั้น";
     }
 
+    // trimmedEmail: อีเมลที่ตัดช่องว่างหัวท้ายก่อนตรวจรูปแบบหรือส่งข้อมูล
     const trimmedEmail = form.email.trim();
     if (!trimmedEmail) {
       errors.email = "กรุณากรอกอีเมล";
@@ -113,6 +141,7 @@ export default function CreateAccountPage() {
     return errors;
   };
 
+  /** แปลงข้อผิดพลาดที่รับมาเป็นข้อความภาษาไทยตามสาเหตุ เช่น เน็ตขาดหรือระบบไม่พร้อม */
   // แปล error จาก Supabase/เครือข่ายให้เป็นภาษาที่เข้าใจง่าย ไม่ใช้ศัพท์เทคนิค
   const toFriendlyMessage = (err: unknown): string => {
     // เช็คซ้ำตอนพัง ณ ตอนนั้นเลย เผื่อเน็ตหลุดไปแล้วระหว่างที่ fetch กำลังวิ่งอยู่
@@ -126,6 +155,7 @@ export default function CreateAccountPage() {
         : typeof err === "object" && err !== null && "message" in err
           ? String((err as { message: unknown }).message)
           : String(err);
+    // message: ข้อความผิดพลาดดิบที่แปลงเป็นตัวพิมพ์เล็ก เพื่อเทียบสาเหตุและเลือกข้อความภาษาไทย
     const message = raw.toLowerCase();
 
     if (message.includes("already registered") || message.includes("already exists") || message.includes("user already")) {
@@ -148,6 +178,9 @@ export default function CreateAccountPage() {
     return "ระบบขัดข้องชั่วคราว ไม่สามารถสร้างบัญชีได้ในขณะนี้ กรุณาลองใหม่อีกครั้งในภายหลัง";
   };
 
+  /** ตรวจฟอร์ม ป้องกันคำขอซ้ำ และส่งข้อมูลสมัครพร้อมชื่อและบทบาทให้ Supabase Auth */
+  // ศึกษา 3.2.2.1: ผู้สมัครส่งฟอร์ม /signup → handleSubmit (ฟังก์ชันเราใน Browser, รับ event, คืน Promise<void>)
+  // ตรวจข้อมูลก่อนเรียก Supabase Auth; ได้ data.user จึงแสดงสำเร็จ ส่วน error แสดงที่ฟอร์ม
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
 
@@ -162,6 +195,7 @@ export default function CreateAccountPage() {
       return;
     }
 
+    // errors: ข้อผิดพลาดแยกตามชื่อช่อง ซึ่งต้องแก้ให้ครบก่อนส่งฟอร์ม
     const errors = validate();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -183,6 +217,8 @@ export default function CreateAccountPage() {
       // หมายเหตุ: ไม่ต้อง insert ลงตาราง profiles เองอีกต่อไป
       // เพราะมี Postgres trigger (on_auth_user_created) คอยสร้าง profile
       // ให้อัตโนมัติจากค่าใน options.data ด้านล่างนี้อยู่แล้ว
+      // signUp เป็น Supabase SDK; await รอผล Auth แล้วแยก data กับ error (เปลี่ยนชื่อเป็น signUpError)
+      // trim() ตัดช่องว่างหัวท้าย; full_name/role เป็น metadata ไม่ใช่ INSERT profiles; ไม่พบ DDL trigger สมัครใน migrations ชุดนี้
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: form.email.trim(),
         password: form.password,
@@ -207,6 +243,7 @@ export default function CreateAccountPage() {
         setForm(initialFormState);
 
       }
+    // try/catch รับข้อผิดพลาดที่ throw; finally ทำเสมอเพื่อคืนสถานะส่งฟอร์ม แม้ return ออกก่อน
     } catch (err) {
       console.error("Unexpected sign up error:", err);
       setFormError(toFriendlyMessage(err));

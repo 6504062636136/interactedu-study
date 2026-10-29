@@ -119,6 +119,8 @@ const CREDIT_MODE = { credit: 'credit' as const, lessonMode: 'normal' as const }
 // POST — SCO commit เข้ามา แล้วบันทึกลง DB (ของเดิม)
 // ============================================================================
 
+// ศึกษา 3.2.2.13: Player ส่ง lessonId/courseId, scoIdentifier, lessonStatus และ cmiData มายัง Route ฝั่ง Server
+// หา approved enrollment ที่ยังไม่หมดอายุ → รวม SCO ที่จบ/CMI → upsert scorm_tracking; admin preview ข้ามบันทึก, ไม่มีสิทธิ์/error คืน HTTP error
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -177,6 +179,7 @@ export async function POST(request: NextRequest) {
     const thisScoCompleted =
       scoType === 'quiz' ? lessonStatus === 'passed' : lessonStatus === 'completed';
 
+    // completedScos เป็นรายการ href ของหน่วยเนื้อหาที่จบแล้ว; รวมของเดิมและไม่เพิ่ม href ซ้ำ ก่อนเทียบกับ manifest ของ lessons
     const completedScos =
       thisScoCompleted && scoIdentifier && !existingScos.includes(scoIdentifier)
         ? [...existingScos, scoIdentifier]
@@ -222,6 +225,7 @@ export async function POST(request: NextRequest) {
     // (เช่น serialize ฝั่ง client ล้มเหลว) ให้คงของเดิมไว้ อย่าเขียนทับด้วยค่าว่าง
     const existingCmiData =
       existing?.cmi_data && typeof existing.cmi_data === 'object' ? existing.cmi_data : {};
+    // cmiData มาจาก runtime ใน Browser; เก็บใน scorm_tracking.cmi_data ของคู่ enrollment_id/lesson_id; ?? ที่ใช้กับคะแนนด้านล่างเก็บ 0 ไว้ได้
     const nextCmiData =
       cmiData && typeof cmiData === 'object' ? cmiData : existingCmiData;
 
@@ -291,6 +295,7 @@ export async function POST(request: NextRequest) {
 // ชื่อ element ของเวอร์ชันที่ใช้จริงเอง จะได้ไม่ต้องรู้เวอร์ชันที่ฝั่ง server
 // ============================================================================
 
+// Player เรียก GET เพื่อคืน CMI/สถานะเดิมและข้อมูลโหมด; ฝั่ง Server แยก preview จาก enrollment ของผู้เรียนก่อนอ่าน tracking
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

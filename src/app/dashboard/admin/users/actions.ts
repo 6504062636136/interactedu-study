@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/utils/supabase/server";
 
+// ศึกษา 3.2.2.2/19: AdminAccountStatusSwitch เรียก Server Action ส่ง userId=profiles.id กับ boolean isActive คืน {} หรือ {error}
+// RPC admin_set_user_active ตรวจ admin/กันปิดตัวเอง/แอดมินสุดท้าย แล้วแก้ is_active และเก็บ account_status_events ตาม migration ล่าสุด
 export async function setUserActive(userId: string, isActive: boolean): Promise<{ error?: string }> {
   if (typeof isActive !== "boolean") return { error: "สถานะบัญชีไม่ถูกต้อง" };
   const supabase = await createClient();
@@ -32,6 +34,8 @@ export async function setUserActive(userId: string, isActive: boolean): Promise<
   return {};
 }
 
+// AdminUserArchivePanel ส่ง userId/ข้อความยืนยันมา Action; RPC admin_archive_user ทำ soft delete ตั้ง archived_at/is_active=false
+// คืน {} หรือ {error}; ยังเก็บ Auth และประวัติการเรียนตาม SQL ไม่ใช่ลบข้อมูลผู้ใช้ทั้งหมด
 export async function archiveUserAccount(userId: string, confirmation: string): Promise<{ error?: string }> {
   if (typeof userId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
     return { error: "รหัสบัญชีไม่ถูกต้อง" };

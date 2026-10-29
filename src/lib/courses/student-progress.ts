@@ -55,9 +55,12 @@ export function getLessonProgress(lesson: StudentProgressLesson, tracking?: Stud
   return completed / scos.length;
 }
 
+// ศึกษา 3.2.2.16: helper ของเรารับ lessons กับ tracking ของ enrollment คืนจำนวนบท/percent/resumeLesson ให้ Dashboard
+// แต่ละบทน้ำหนักเท่ากัน; บทที่ยังไม่จบใช้ completed_scos/manifest หาสัดส่วน และให้ 100 เฉพาะ video_completed ครบทุกบท ไม่ใช้เวลาเรียน
 export function summarizeStudentProgress<T extends StudentProgressLesson>(lessons: T[], tracking: StudentTracking[]) {
   const validIds = new Set(lessons.map((lesson) => lesson.id));
   const records = tracking.filter((row) => validIds.has(row.lesson_id));
+  // Map จับ lesson_id → tracking; กรองให้เหลือ lessons.id ของคอร์สนี้ก่อนนับ ป้องกันแถวบทอื่นปนผลรวม
   const byLesson = new Map(records.map((row) => [row.lesson_id, row]));
   const completed = lessons.filter((lesson) => isLessonComplete(byLesson.get(lesson.id))).length;
   const total = lessons.length;

@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: หน้าทำข้อสอบท้ายคอร์ส เก็บคำตอบ ส่งตรวจ และแสดงผลพร้อมทบทวนเฉลย
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน
+ */
 "use client";
 
 import Link from "next/link";
@@ -77,6 +82,7 @@ interface Result {
   review?: FinalExamReviewItem[];
 }
 
+/** คำนวณว่าต้องตอบถูกเพิ่มอีกกี่ข้อจึงถึง passPercentage จากจำนวนข้อทั้งหมด */
 // ===== เพิ่มใหม่: ขาดอีกกี่ข้อถึงจะผ่าน — หาจำนวนข้อถูกที่น้อยที่สุดที่ทำให้คะแนน >= เกณฑ์ผ่าน
 // (ใช้สูตรปัดเศษเดียวกับ server: round(correct/total*10000)/100) แล้วลบด้วยจำนวนที่ตอบถูกแล้ว =====
 function questionsMissingToPass(correct: number, total: number, passPercentage: number): number {
@@ -86,6 +92,7 @@ function questionsMissingToPass(correct: number, total: number, passPercentage: 
   return Math.max(total - correct, 0);
 }
 
+/** วาดไอคอนจุดจับสำหรับลากรายการคำตอบแบบเรียงลำดับ */
 // ===== เพิ่มใหม่: ไอคอนจุด 6 จุด (drag handle) — visual cue มาตรฐานสากลว่า "ลากได้" ตาม feedback UX =====
 function DragHandleIcon() {
   return (
@@ -100,6 +107,7 @@ function DragHandleIcon() {
   );
 }
 
+/** แสดงรายการเรียงลำดับหนึ่งแถวพร้อมตัวจับลากและลำดับปัจจุบัน */
 // ===== เพิ่มใหม่: แถวเดียวของรายการ sequencing ที่ลากสลับตำแหน่งได้ — drag handle แยกจากตัวรายการ
 // (attributes/listeners ผูกกับปุ่ม handle เท่านั้น) กันไม่ให้แค่แตะตัวข้อความก็ลากหลุดมือโดยไม่ตั้งใจ
 function SequencingRow({ id, index, text }: { id: string; index: number; text: string }) {
@@ -132,6 +140,7 @@ function SequencingRow({ id, index, text }: { id: string; index: number; text: s
   );
 }
 
+/** แสดงรายการที่ลากเรียงได้ทั้งเมาส์และคีย์บอร์ด และส่งลำดับใหม่ผ่าน onReorder */
 // ===== เพิ่มใหม่: DndContext ต่อคำถาม 1 ข้อ — scope sensor/context แยกกันแต่ละข้อ ป้องกันลากข้าม
 // คำถามกันได้เอง (SortableContext items เป็น order ของข้อนั้นๆ เท่านั้น)
 function SequencingList({
@@ -143,12 +152,14 @@ function SequencingList({
   order: string[];
   onReorder: (nextOrder: string[]) => void;
 }) {
+  // sensors: ตัวรับการลากจากเมาส์หรือคีย์บอร์ดสำหรับคำถามแบบเรียงลำดับ
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
   const itemById = new Map(items.map((item) => [item.id, item.text]));
 
+  /** หาตำแหน่งต้นทางและปลายทางของรายการที่ลาก แล้วส่งลำดับคำตอบใหม่ */
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -171,6 +182,7 @@ function SequencingList({
   );
 }
 
+/** อ่านเลขท้ายข้อความด้านซ้ายของคำถามจับคู่ เพื่อเชื่อมกับจุดหมายเลขบนภาพ */
 // เลขหมุดบนภาพที่ผูกกับรายการฝั่งซ้าย: ถ้าข้อความฝั่งซ้ายลงท้ายด้วยตัวเลข (เช่น "ตำแหน่ง 3") ถือว่าหมายถึงหมุดเลขนั้น
 // (ตรรกะเดียวกับ Pop-up Quiz ใน generate.ts) ไม่มีเลข = ใช้ลำดับแถวเป็นเลข badge และไม่ผูกกับหมุด
 function pinNumberOf(leftText: string): number | null {
@@ -178,17 +190,25 @@ function pinNumberOf(leftText: string): number | null {
   return match ? parseInt(match[1], 10) : null;
 }
 
+/** โหลดข้อสอบตาม courseId เก็บคำตอบแต่ละรูปแบบ และแสดงผลจากเซิร์ฟเวอร์หลังส่ง */
 export default function CourseFinalExam({ courseId }: { courseId: string }) {
+  // router: ตัวควบคุมการเปลี่ยนหน้าและรีเฟรชข้อมูลผ่าน Next.js บนเบราว์เซอร์
   const router = useRouter();
   // แถวจับคู่ที่กำลัง hover/โฟกัส (ไฮไลต์หมุดบนภาพที่คู่กัน) — เก็บแยกต่อคำถาม
   const [activeMatchRow, setActiveMatchRow] = useState<{ questionId: string; left: string } | null>(null);
+  // exam: ข้อมูลข้อสอบและเงื่อนไขการสอบที่ API อนุญาตให้ผู้เรียนทำ; setExam ใช้อัปเดตค่านี้
   const [exam, setExam] = useState<ExamData | null>(null);
+  // answers: คำตอบปัจจุบันแยกตามรหัสคำถาม โดยแต่ละค่าระบุรูปแบบคำตอบด้วย type; setAnswers ใช้อัปเดตค่านี้
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
+  // result: ผลตรวจคะแนนและรายละเอียดทบทวนที่เซิร์ฟเวอร์คืนหลังส่งข้อสอบ; setResult ใช้อัปเดตค่านี้
   const [result, setResult] = useState<Result | null>(null);
   // ===== เพิ่มใหม่: หน้าสรุปผล (summary) หรือหน้าเฉลยละเอียด (review) — review เปิดได้เฉพาะตอนสอบผ่าน =====
   const [view, setView] = useState<"summary" | "review">("summary");
+  // loading: สถานะกำลังโหลดข้อมูลสำหรับส่วนแสดงผลนี้; setLoading ใช้อัปเดตค่านี้
   const [loading, setLoading] = useState(true);
+  // submitting: สถานะกำลังส่งข้อมูลให้เซิร์ฟเวอร์ ใช้ควบคุมปุ่มและข้อความรอ; setSubmitting ใช้อัปเดตค่านี้
   const [submitting, setSubmitting] = useState(false);
+  // error: ข้อผิดพลาดปัจจุบันที่ใช้แจ้งให้ผู้ใช้ทราบในส่วนนี้; setError ใช้อัปเดตค่านี้
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -203,6 +223,7 @@ export default function CourseFinalExam({ courseId }: { courseId: string }) {
       .finally(() => setLoading(false));
   }, [courseId]);
 
+  /** ตรวจคำตอบตามชนิดคำถาม โดยแบบเรียงลำดับถือว่าตอบแล้วได้จากลำดับเริ่มต้น */
   // ===== เพิ่มใหม่: เช็คว่าข้อนี้ "ตอบแล้ว" หรือยัง ตามชนิดคำถาม =====
   // sequencing ถือว่าตอบแล้วเสมอ เพราะมีลำดับตั้งต้นให้อยู่แล้ว (นักเรียนแค่จัดใหม่ถ้าคิดว่าลำดับผิด)
   function isAnswered(question: Question, answer: AnswerValue | undefined): boolean {
@@ -219,7 +240,11 @@ export default function CourseFinalExam({ courseId }: { courseId: string }) {
     return answer?.type === "choice";
   }
 
+  /** ตรวจว่าตอบครบ แปลงคำตอบแต่ละรูปแบบ และส่งให้ API ตรวจคะแนนก่อนแสดงผล */
+  // ศึกษา 3.2.2.14: helper ใน Browser ตรวจตอบครบแล้ว POST {answers} ไป final-exam; questions/answers ใช้ questionId จับคู่
+  // React state แสดงคะแนน/ข้อความที่ Server ตอบกลับ ไม่คำนวณคะแนนอนุมัติใบรับรองใน Browser
   async function submitExam() {
+    // answeredCount: จำนวนคำถามที่มีคำตอบครบตามกติกาก่อนส่งข้อสอบ
     const answeredCount = exam?.questions.filter((question) => isAnswered(question, answers[question.id])).length ?? 0;
     if (!exam || answeredCount !== exam.questions.length) {
       setError("กรุณาตอบคำถามให้ครบทุกข้อ");
@@ -618,6 +643,7 @@ export default function CourseFinalExam({ courseId }: { courseId: string }) {
   );
 }
 
+/** แสดงคำตอบที่เลือกเทียบกับเฉลยและคำอธิบาย โดย onBack ใช้กลับหน้าสรุปผล */
 // ===== เพิ่มใหม่: หน้าเฉลยและคำอธิบายละเอียด (Review Answers) — แสดงคำตอบของนักเรียนแต่ละข้อ,
 // ข้อไหนถูก/ผิด, คำตอบที่ถูกต้อง และคำอธิบายเฉลย รองรับทั้ง 4 ชนิดคำถาม =====
 function ReviewAnswers({ review, onBack }: { review: FinalExamReviewItem[]; onBack: () => void }) {
@@ -801,6 +827,7 @@ function ReviewAnswers({ review, onBack }: { review: FinalExamReviewItem[]; onBa
   );
 }
 
+/** แสดงค่าสถิติผลสอบหนึ่งรายการ โดยรับ value เป็นค่าและ label เป็นชื่อ */
 function Stat({ value, label }: { value: string; label: string }) {
   return <div className="rounded-2xl bg-white/[0.07] px-3 py-3 text-center"><div className="text-lg font-black">{value}</div><div className="text-[11px] font-semibold text-white/45">{label}</div></div>;
 }

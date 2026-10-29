@@ -67,6 +67,8 @@ export default function NotificationList(): ReactElement {
     };
   }, []);
 
+  // ศึกษา 3.2.2.18: helper ใน Browser รับ NotificationRecord; เปลี่ยน React state ให้อ่านแล้วและส่ง PATCH ไป API ของรายการ
+  // จากนั้นใช้ action_url เปิดหน้าที่เกี่ยวข้อง; การเปลี่ยน state บนจอเป็นคนละขั้นกับการบันทึกจริงใน Database
   async function openNotification(notification: NotificationRecord): Promise<void> {
     let readRequest: Promise<Response> | null = null;
     if (!notification.is_read) {

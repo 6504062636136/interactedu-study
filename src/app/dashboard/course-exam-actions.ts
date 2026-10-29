@@ -220,6 +220,8 @@ export interface SaveCourseExamConfigInput {
   customConstraints: CustomConstraintInput[];
 }
 
+// ศึกษา 3.2.2.9: CourseExamEditor เรียก Server Action ส่ง courseId กับ customConstraints (บทเรียน/ความยาก/จำนวนข้อ)
+// ตรวจเจ้าของหรือ admin และมีบทเรียน; รวม count แล้ว upsert course_exam_configs; คืน {} หรือ {error} ไม่ได้บันทึกคะแนนสอบ
 export async function saveCourseExamConfig(input: SaveCourseExamConfigInput): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -259,6 +261,7 @@ export async function saveCourseExamConfig(input: SaveCourseExamConfigInput): Pr
     .eq("id", input.courseId).select("id").maybeSingle();
   if (stateError || !editingCourse) return { error: "เตรียมคอร์สสำหรับแก้ไขบททดสอบไม่สำเร็จ" };
 
+  // upsert ของ SDK = เพิ่มถ้ายังไม่มี หรืออัปเดตเมื่อ course_id ชน; custom_constraints เป็นเงื่อนไขให้สุ่มตอนสอบ ไม่ใช่ชุดคำถามถาวร
   const { error: upsertError } = await supabase.from("course_exam_configs").upsert(
     {
       course_id: input.courseId,

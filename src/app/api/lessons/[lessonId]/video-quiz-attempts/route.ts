@@ -62,6 +62,8 @@ export async function GET(
 }
 
 // บันทึกคำตอบ 1 ข้อ — เช็คความถูกต้อง "ฝั่ง server" เท่านั้น ห้ามเชื่อ client ว่าถูกหรือผิด
+// ศึกษา 3.2.2.13: SCO ส่ง questionId กับคำตอบมา Route ฝั่ง Server; ตรวจบทเรียน/enrollment แล้วโหลดเฉลยจริงตรวจซ้ำ
+// questionId อาจเป็น quiz_questions.id หรือ video_quiz_markers.id; บันทึก video_quiz_attempts ตาม question_id/marker_id ไม่ใช่คะแนน Final Exam
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ lessonId: string }> }

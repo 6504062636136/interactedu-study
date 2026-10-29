@@ -11,6 +11,8 @@ import { validateFillInBlank } from './validators/fill-in-blank';
 import { validateMultiSelect } from './validators/multi-select';
 import { validateDragDrop } from './validators/drag-drop';
 
+// helper ของเรา: รับโจทย์พร้อมเฉลยและคำตอบ คืน ValidationResult; switch เลือก validator ตาม interaction_type
+// Final Exam/Video Quiz เรียกบน Server; validator ไม่อ่าน Database เอง จึงต้องส่งเฉลยจากแหล่งที่ caller ตรวจสิทธิ์แล้ว
 export function validateAnswer(
   question: QuestionForValidation,
   studentAnswer: StudentAnswer

@@ -93,6 +93,8 @@ function slugify(input: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
+// ศึกษา 3.2.2.6: Server Action ของเรารับข้อมูล CourseCreateForm คืน {courseId,moduleId} หรือ {error}
+// ตรวจ teacher/admin และข้อมูล → INSERT courses.draft โดย created_by=user.id → INSERT modules.course_id=course.id
 export async function createCourse(input: CreateCourseInput): Promise<CreateCourseResult> {
   const supabase = await createClient();
 
@@ -131,6 +133,7 @@ export async function createCourse(input: CreateCourseInput): Promise<CreateCour
     return { error: "คะแนนผ่านต้องอยู่ระหว่าง 0 ถึง 100" };
   }
 
+  // slug คือส่วน URL ที่สร้างจากรหัสวิชา+เวลา; course.id ที่ DB สร้างใช้เป็น ID เชื่อมตาราง ต่างจาก slug
   const slug = `${slugify(input.courseCode)}-${Date.now().toString(36)}`;
 
   const { data: course, error: courseError } = await supabase
@@ -208,6 +211,8 @@ export interface CourseReadiness {
   examIssue: string | null;
 }
 
+// ศึกษา 3.2.2.10: helper ฝั่ง Server รับ courses.id คืน CourseReadiness ให้ UI/submit/approve ใช้กติกาเดียวกัน
+// อ่าน lessons/draft ล่าสุด, video_quiz_markers และ course_exam_configs; ทดลองสุ่มคำถามเพื่อรายงานจุดที่ยังไม่พร้อม
 export async function checkCourseReadiness(courseId: string): Promise<CourseReadiness> {
   const supabase = await createClient();
 
@@ -384,6 +389,8 @@ export async function checkCourseReadiness(courseId: string): Promise<CourseRead
 // ที่ฝั่ง server เพื่อกันกรณี client ส่งมาทั้งที่ข้อมูลจริงยังไม่ครบ)
 // ============================================================
 
+// ศึกษา 3.2.2.10: SubmitCourseButton ส่ง courses.id มา Action; เช็ค created_by และ readiness ก่อนเปลี่ยนสถานะ
+// lesson_drafts ล่าสุดที่ยังไม่ approved → pending_review, courses → pending; แจ้ง admin หลังอัปเดตสำเร็จ คืน {} หรือ {error}
 export async function submitCourseForReview(courseId: string): Promise<{ error?: string }> {
   const supabase = await createClient();
 

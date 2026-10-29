@@ -1,26 +1,41 @@
+/**
+ * หน้าที่ของไฟล์: แสดงรายละเอียดและตัวอย่าง PDF ใบประกาศนียบัตรสำหรับแอดมิน
+ * เส้นทาง: /dashboard/admin/certificates/[certificateId]
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import CertificatePdfViewer from "@/components/certificates/CertificatePdfViewer";
 
+/** ตรวจบทบาท โหลดใบประกาศนียบัตรและชื่อผู้เรียน แล้วแสดงข้อมูลรวมถึงสถานะเพิกถอน */
 export default async function AdminCertificateDetailPage({ params }: { params: Promise<{ certificateId: string }> }) {
+  // certificateId: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { certificateId } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?redirect=/dashboard/admin/certificates");
+  // actor: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: actor } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (actor?.role !== "admin") redirect("/dashboard");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(certificateId)) notFound();
 
+  // certificate, error: ผลอ่านข้อมูลใบประกาศนียบัตร พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: certificate, error } = await supabase.from("certificates")
     .select("id, certificate_no, user_id, course_id, score_percentage, pass_percentage, status, issued_at, revoked_at, pdf_path, courses(title)")
     .eq("id", certificateId).maybeSingle();
   if (error) throw new Error("ไม่สามารถโหลดรายละเอียดใบรับรองได้");
   if (!certificate) notFound();
+  // learner, learnerError: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้ พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: learner, error: learnerError } = await supabase.from("profiles")
     .select("full_name").eq("id", certificate.user_id).maybeSingle();
+  // course: ข้อมูลคอร์สที่ผูกกับรายการหรือหน้าที่กำลังแสดง ซึ่งอาจเป็น null หากอ่านไม่พบ
   const course = certificate.courses as unknown as { title: string } | null;
+  // revoked: ระบุว่าใบประกาศนียบัตรถูกเพิกถอนแล้ว เพื่อปรับข้อความและส่วนแสดงผล
   const revoked = certificate.status === "revoked";
+  /** แปลงวันเวลาที่รับมาเป็นข้อความวันที่ตามรูปแบบที่หน้านี้กำหนด */
   const formatDate = (value: string) => new Date(value).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
 
   return (

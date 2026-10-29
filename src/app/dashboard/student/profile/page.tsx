@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงโปรไฟล์ผู้เรียน แผน Plus ความก้าวหน้าคอร์ส และใบประกาศนียบัตรล่าสุด
+ * เส้นทาง: /dashboard/student/profile
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 // app/dashboard/student/profile/page.tsx
 import type { ReactElement } from "react";
 import Link from "next/link";
@@ -39,21 +44,27 @@ interface CertificateRow {
   courses: { title: string } | null;
 }
 
+/** รวมข้อมูลโปรไฟล์ สมาชิก คอร์สในคลัง และผลการเรียนสำหรับหน้าข้อมูลผู้เรียน */
 export default async function StudentProfilePage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
     return <p className="text-[13.5px] text-slate-400 py-8 text-center">กรุณาเข้าสู่ระบบ</p>;
   }
 
+  // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profile } = await supabase
     .from("profiles")
     .select("full_name, avatar_url")
     .eq("id", user.id)
     .single();
 
+  // now: เวลาปัจจุบันที่ใช้เทียบวันเริ่ม วันหมดอายุ หรือช่วงกิจกรรมในหน้านี้
   const now = new Date().toISOString();
+  // plusQuery: คำสั่งอ่านแผน Plus ที่สถานะ active และยังไม่หมดอายุ รวมแผนที่รอเริ่ม
   const plusQuery = supabase.from("student_membership_orders")
     .select("starts_at, expires_at, duration_months")
     .eq("student_id", user.id)
@@ -61,6 +72,7 @@ export default async function StudentProfilePage(): Promise<ReactElement> {
     .gt("expires_at", now)
     .order("starts_at", { ascending: true });
   const plusResult = await plusQuery;
+  // plusRows: ข้อมูลแผน Plus ที่แปลงชื่อฟิลด์เพื่อใช้เลือกแผนปัจจุบันและแผนถัดไป
   let plusRows: PlusPlanDetails[] = (plusResult.data ?? []).map((row) => ({
     durationMonths: row.duration_months === 12 ? 12 : 1,
     startsAt: row.starts_at,
@@ -75,8 +87,10 @@ export default async function StudentProfilePage(): Promise<ReactElement> {
       .order("starts_at", { ascending: true });
     plusRows = (legacyResult.data ?? []).map((row) => ({ durationMonths: 1, startsAt: row.starts_at, expiresAt: row.expires_at }));
   }
+  // currentPlus, upcomingPlus: แผน Plus ที่มีผลอยู่และแผนที่รอเริ่ม ซึ่งเลือกจากวันเริ่มและวันหมดอายุ
   const { current: currentPlus, upcoming: upcomingPlus } = selectPlusPlans(plusRows, new Date(now));
 
+  // enrollmentsRaw: ผลอ่านข้อมูลการลงทะเบียน
   const { data: enrollmentsRaw } = await loadLearningEnrollments((includeStart) => supabase
     .from("enrollments")
     .select(`id, created_at, course_id, membership_order_id, ${includeStart ? "learning_started_at, " : ""}scorm_tracking(lesson_id, last_accessed, video_completed, lesson_status, completed_scos, cmi_data), student_study_time(total_seconds), courses(id, title, slug, cover_image_url, category)`)
@@ -85,11 +99,16 @@ export default async function StudentProfilePage(): Promise<ReactElement> {
     .or(`access_expires_at.is.null,access_expires_at.gt.${new Date().toISOString()}`)
     .order("created_at", { ascending: false }));
 
+  // library: ผลโหลดคลังคอร์สที่บันทึกไว้ ใช้แยกการเก็บคอร์สออกจากสิทธิ์ที่ได้ด้วยสมาชิก
   const library = await loadSavedCourseEnrollments(supabase, user.id);
+  // enrollments: รายการลงทะเบียนที่ผ่านเงื่อนไข query และตัวกรองของหน้านี้แล้ว
   const enrollments = ((enrollmentsRaw ?? []) as unknown as EnrollmentWithCourse[]).filter((row) => isCourseInLibrary(row, library.enrollmentIds));
+  // enrollmentIds: รหัสการลงทะเบียนที่ใช้จับคู่และอ่านข้อมูลความก้าวหน้า
   const enrollmentIds = enrollments.map((e) => e.id);
+  // courseIds: รหัสคอร์สที่ใช้จำกัดการอ่านข้อมูลเกี่ยวข้องให้ตรงกับรายการที่กำลังแสดง
   const courseIds = enrollments.map((e) => e.course_id);
 
+  // trackingRaw: ผลอ่านข้อมูลความก้าวหน้าการเรียน SCORM
   const { data: trackingRaw } = enrollmentIds.length
     ? await supabase
         .from("scorm_tracking")
@@ -97,13 +116,17 @@ export default async function StudentProfilePage(): Promise<ReactElement> {
         .in("enrollment_id", enrollmentIds)
     : { data: [] };
 
+  // tracking: ประวัติการเรียนที่ใช้คำนวณความก้าวหน้าในส่วนนี้
   const tracking = (trackingRaw ?? []) as ScormTrackingRow[];
 
+  // lessonsRaw: ผลอ่านข้อมูลบทเรียน
   const { data: lessonsRaw } = courseIds.length
     ? await supabase.from("lessons").select("id, course_id, order_index, scorm_source, scorm_manifest").in("course_id", courseIds).eq("is_published", true)
     : { data: [] };
 
+  // coursesWithProgress: คอร์สในคลังพร้อมผลสรุปความก้าวหน้าและสถานะเริ่มเรียน
   const coursesWithProgress = enrollments.filter((enrollment) => enrollment.courses).map((enrollment) => {
+    // summary: ผลสรุปข้อมูลจากบริการหรือฟังก์ชันกลาง เพื่อให้ส่วนแสดงผลใช้ค่าที่คำนวณไว้ชุดเดียวกัน
     const summary = summarizeStudentProgress(
       (lessonsRaw ?? []).filter((lesson) => lesson.course_id === enrollment.course_id),
       tracking.filter((row) => row.enrollment_id === enrollment.id)
@@ -111,9 +134,12 @@ export default async function StudentProfilePage(): Promise<ReactElement> {
     return { ...enrollment, started: hasStartedLearning(enrollment), completed: summary.completed, total: summary.total, percent: summary.percent };
   });
 
+  // inProgress: คอร์สที่เริ่มเรียนแล้วและมีความก้าวหน้ายังไม่ถึง 100 เปอร์เซ็นต์
   const inProgress = coursesWithProgress.filter((c) => c.started && c.percent < 100);
+  // completedCourses: คอร์สที่มีบทเรียนและความก้าวหน้าครบ 100 เปอร์เซ็นต์
   const completedCourses = coursesWithProgress.filter((c) => c.percent >= 100 && c.total > 0);
 
+  // certsRaw: ผลอ่านข้อมูลใบประกาศนียบัตร
   const { data: certsRaw } = await supabase
     .from("certificates")
     .select("id, issued_at, status, courses(title)")
@@ -121,6 +147,7 @@ export default async function StudentProfilePage(): Promise<ReactElement> {
     .order("issued_at", { ascending: false })
     .limit(3);
 
+  // certificates: รายการใบประกาศนียบัตรที่อ่านมาเพื่อแสดงตามขอบเขตผู้ใช้ของหน้านี้
   const certificates = (certsRaw ?? []) as unknown as CertificateRow[];
 
   return (

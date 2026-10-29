@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงรายละเอียดแจ้งเตือนของเจ้าของบัญชีและบันทึกสถานะอ่านแล้ว
+ * เส้นทาง: /dashboard/notifications/[id]
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -15,6 +20,7 @@ interface LegacyNotificationRow {
   created_at: string;
 }
 
+// TYPE_LABELS: ชื่อภาษาไทยของแต่ละประเภทแจ้งเตือนที่ใช้แสดงบนหน้ารายละเอียด
 const TYPE_LABELS: Record<NotificationType, string> = {
   system: "ระบบ",
   payment_approved: "การชำระเงินสำเร็จ",
@@ -35,10 +41,12 @@ const TYPE_LABELS: Record<NotificationType, string> = {
   student_started_course: "ผู้เรียนเริ่มเรียนคอร์ส",
 };
 
+/** ยอมรับเฉพาะลิงก์เส้นทางภายในเว็บไซต์ เพื่อใช้เป็นปลายทางของปุ่มแจ้งเตือน */
 function internalActionUrl(value: string | null): string | null {
   return value?.startsWith("/") && !value.startsWith("//") ? value : null;
 }
 
+/** แปลงเวลาของแจ้งเตือนเป็นข้อความวันที่และเวลาที่อ่านได้ */
 function formattedDate(value: string): string {
   return new Date(value).toLocaleString("th-TH", {
     dateStyle: "long",
@@ -46,19 +54,24 @@ function formattedDate(value: string): string {
   });
 }
 
+/** โหลดแจ้งเตือนตาม id และผู้ใช้ รองรับโครงสร้างข้อมูลเดิม แล้วบันทึกว่าอ่านแล้ว */
 export default async function NotificationDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }): Promise<ReactElement> {
+  // id: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { id } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) notFound();
 
+  // modernResult: ผลอ่านแจ้งเตือนด้วยชุดคอลัมน์ปัจจุบัน ซึ่งใช้ตรวจว่าต้องลองโครงสร้างเดิมหรือไม่
   const modernResult = await supabase
     .from("notifications")
     .select(
@@ -72,6 +85,7 @@ export default async function NotificationDetailPage({
   if (!modernResult.error) {
     notification = modernResult.data as NotificationRecord | null;
   } else {
+    // legacyResult: ผลอ่านแจ้งเตือนด้วยชุดคอลัมน์เดิมเมื่อฐานข้อมูลยังไม่มีคอลัมน์ใหม่
     const legacyResult = await supabase
       .from("notifications")
       .select("id, user_id, title, message, link, is_read, created_at")
@@ -108,6 +122,7 @@ export default async function NotificationDetailPage({
   if (!notification) notFound();
 
   if (!notification.is_read) {
+    // modernUpdate: ผลบันทึก is_read และ read_at ตามโครงสร้างปัจจุบัน
     const modernUpdate = await supabase
       .from("notifications")
       .update({ is_read: true, read_at: new Date().toISOString() })
@@ -123,7 +138,9 @@ export default async function NotificationDetailPage({
     }
   }
 
+  // actionUrl: ลิงก์จากแจ้งเตือนที่ผ่านการตรวจว่าเป็นเส้นทางภายในแล้ว
   const actionUrl = internalActionUrl(notification.action_url);
+  // actionLabel: ข้อความบนปุ่มปลายทางที่เลือกตามประเภทแจ้งเตือน
   const actionLabel =
     notification.type === "course_approved" ||
     notification.type === "lesson_approved" ||

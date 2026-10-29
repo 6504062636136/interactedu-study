@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงหน้าลงทะเบียนคอร์สฟรีหรือชำระเงินคอร์สที่เลือก
+ * เส้นทาง: /courses/[slug]/enroll
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
@@ -14,11 +19,13 @@ interface Course {
   price: number;
 }
 
+/** จัดรูปแบบราคาสำหรับแสดงเป็นเงินบาทตามรูปแบบภาษาไทย */
 function formatPrice(price: number): string {
   if (price === 0) return "ฟรี";
   return `฿${price.toLocaleString("th-TH")}`;
 }
 
+/** ตรวจผู้ใช้ คอร์ส และรายการลงทะเบียนที่มีอยู่ ก่อนแสดงปุ่มสมัครหรือส่วนชำระเงิน */
 export default async function EnrollPage({
   params,
   searchParams,
@@ -26,10 +33,14 @@ export default async function EnrollPage({
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ error?: string }>;
 }): Promise<ReactElement> {
+  // slug: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { slug } = await params;
+  // submitError: ค่าจาก query string สำหรับตัวกรอง ข้อความผลลัพธ์ หรือโหมดแก้ไขของหน้า
   const { error: submitError } = await searchParams;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -38,6 +49,7 @@ export default async function EnrollPage({
     redirect(`/login?redirect=/courses/${slug}/enroll`);
   }
 
+  // course, error: ผลอ่านข้อมูลคอร์ส พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: course, error } = await supabase
     .from("courses")
     .select("id, title, slug, cover_image_url, price")
@@ -49,8 +61,10 @@ export default async function EnrollPage({
     notFound();
   }
 
+  // typedCourse: ข้อมูลคอร์สที่กำหนดชนิดให้ตรงกับโครงสร้างที่หน้ารายละเอียดใช้งาน
   const typedCourse = course as Course;
 
+  // existingEnrollment: ผลอ่านข้อมูลการลงทะเบียน
   const { data: existingEnrollment } = await supabase
     .from("enrollments")
     .select("id, status")
@@ -64,6 +78,7 @@ export default async function EnrollPage({
     redirect(`/courses/${slug}/success`);
   }
 
+  // isFree: ระบุว่าเป็นคอร์สฟรี เพื่อเลือกส่วนสมัครฟรีหรือส่วนชำระเงิน
   const isFree = typedCourse.price === 0;
 
   return (

@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: ตั้งค่าราคาและการเปิดขายแพ็กเกจ Plus สำหรับแอดมิน
+ * เส้นทาง: /dashboard/admin/membership
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactElement } from "react";
@@ -6,6 +11,7 @@ import { updateMembershipOffer } from "./actions";
 import { ArrowLeft, ArrowUpRight, CalendarDays, CheckCircle2, ChevronRight, CirclePlus, Info, Save, Settings2, ShieldCheck } from "lucide-react";
 import { isMissingMembershipSchema } from "@/lib/payments/membership-errors";
 
+/** แสดงช่องกรอกราคาพร้อม label คำอธิบาย ค่าเริ่มต้น และสถานะ disabled */
 function PriceField({ name, label, description, value, disabled }: {
   name: string;
   label: string;
@@ -38,20 +44,24 @@ function PriceField({ name, label, description, value, disabled }: {
   );
 }
 
+/** ตรวจแอดมิน โหลดข้อเสนอ และแสดงสถานะฐานข้อมูลหรือการตั้งค่าชำระเงินก่อนให้แก้ราคา */
 export default async function AdminMembershipPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string; saved?: string }>;
 }): Promise<ReactElement> {
+  // saveError, saved, supabase: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [{ error: saveError, saved }, supabase] = await Promise.all([
     searchParams,
     createClient(),
   ]);
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?redirect=/dashboard/admin/membership");
 
+  // profile, profileError: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้ พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("role")
@@ -60,14 +70,18 @@ export default async function AdminMembershipPage({
   if (profileError) throw new Error("โหลดสิทธิ์ผู้ดูแลไม่สำเร็จ");
   if (profile?.role !== "admin") redirect("/dashboard");
 
+  // offer, error: ผลอ่านข้อมูลการตั้งค่าแพ็กเกจ Plus พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: offer, error } = await supabase
     .from("membership_settings")
     .select("monthly_price, annual_price, annual_regular_price, enabled")
     .eq("id", true)
     .maybeSingle();
   if (error) console.error("[admin membership] Failed to load offer", error.code, error.message);
+  // unavailable: ระบุว่าอ่านการตั้งค่าข้อเสนอไม่ได้หรือยังไม่มีแถวข้อมูล
   const unavailable = Boolean(error || !offer);
+  // needsSetup: ระบุว่าขาดโครงสร้างสมาชิกหรือข้อมูลตั้งต้น จึงต้องแสดงข้อความให้ตั้งค่าระบบ
   const needsSetup = isMissingMembershipSchema(error) || (!error && !offer);
+  // missingPaymentSettings: รายชื่อการตั้งค่าที่ระบบชำระเงินยังขาด ใช้แสดงชื่อที่ต้องตั้งค่าโดยไม่แสดงค่าลับ
   const missingPaymentSettings = [
     !process.env.OMISE_SECRET_KEY && "OMISE_SECRET_KEY",
     !(process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY) && "SUPABASE_SECRET_KEY หรือ SUPABASE_SERVICE_ROLE_KEY",

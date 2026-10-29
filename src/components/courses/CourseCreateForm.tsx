@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: ฟอร์มสร้างคอร์สร่วมของผู้สอนและแอดมิน จัดการตรวจข้อมูล อัปโหลดปก และบันทึกคอร์ส
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน ส่วน useRef เก็บค่าอ้างอิงที่ไม่สั่งแสดงผลใหม่
+ */
 "use client";
 
 import { useState, useRef, useEffect, type ChangeEvent, type FormEvent, type ReactElement, type ReactNode } from "react";
@@ -17,12 +22,16 @@ interface CourseFieldErrors {
   price?: string;
 }
 
+// OFFLINE_MESSAGE: ข้อความที่ใช้แจ้งเมื่ออุปกรณ์ไม่มีการเชื่อมต่ออินเทอร์เน็ต
 const OFFLINE_MESSAGE = "ไม่มีการเชื่อมต่ออินเทอร์เน็ต กรุณาตรวจสอบสัญญาณเน็ตแล้วลองใหม่อีกครั้ง";
+// SYSTEM_ERROR_MESSAGE: ข้อความกลางเมื่อระบบไม่สามารถทำรายการได้ในขณะนี้
 const SYSTEM_ERROR_MESSAGE = "ระบบขัดข้องชั่วคราว ไม่สามารถบันทึกข้อมูลคอร์สได้ กรุณาลองใหม่อีกครั้งในภายหลัง";
 // อนุญาตตัวอักษรอังกฤษ/ตัวเลข/ขีดกลาง/ขีดล่างเท่านั้น (เช่น CS101, ENG-201, WEB_01) — กันภาษาไทย/สัญลักษณ์/HTML tag หลุดเข้ามา
 const COURSE_CODE_PATTERN = /^[A-Za-z0-9_-]+$/;
+// COURSE_CODE_FORMAT_ERROR: ข้อความที่แสดงเมื่อรหัสคอร์สไม่ผ่านรูปแบบที่กำหนด
 const COURSE_CODE_FORMAT_ERROR = "รหัสวิชาต้องเป็นตัวอักษรภาษาอังกฤษและตัวเลขเท่านั้น (เช่น CS101)";
 
+/** จัดกรอบแต่ละหมวดของฟอร์มด้วยชื่อ คำอธิบาย และ children ของช่องกรอก */
 function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
     <section className="rounded-2xl border border-[#0F1B3D]/[0.06] bg-white p-6 shadow-[0_1px_2px_rgba(15,27,61,0.04)]">
@@ -33,36 +42,61 @@ function SectionCard({ title, subtitle, children }: { title: string; subtitle?: 
   );
 }
 
+// inputClass: คลาสตกแต่งร่วมของ input เพื่อให้ช่องกรอกมีรูปแบบเดียวกัน
 const inputClass =
   "w-full rounded-lg border border-[#0F1B3D]/[0.08] bg-[#F7F8FA] px-3.5 py-2.5 text-[13.5px] text-[#0F1B3D] outline-none transition-colors placeholder:text-[#0F1B3D]/30 focus:border-[#0F1B3D]/30 focus:bg-white";
+// labelClass: คลาสตกแต่งร่วมของป้ายชื่อช่องกรอก
 const labelClass = "mb-1.5 block text-[13px] font-semibold text-[#0F1B3D]/70";
 
+/** เก็บข้อมูลคอร์สและสถานะฟอร์ม โดย workspace กำหนดพื้นที่แดชบอร์ดที่จะกลับไปหลังบันทึก */
 export default function CourseCreateForm({ workspace }: { workspace: Workspace }): ReactElement {
+  // router: ตัวควบคุมการเปลี่ยนหน้าและรีเฟรชข้อมูลผ่าน Next.js บนเบราว์เซอร์
   const router = useRouter();
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = createClient();
   const basePath = `/dashboard/${workspace}`;
 
+  // courseCode: รหัสวิชาที่ผู้ใช้กรอกเพื่อใช้อ้างอิงคอร์ส; setCourseCode ใช้อัปเดตค่านี้
   const [courseCode, setCourseCode] = useState("");
+  // title: ชื่อที่ใช้แสดงหรือค่าชื่อที่กำลังแก้ไขในฟอร์มส่วนนี้; setTitle ใช้อัปเดตค่านี้
   const [title, setTitle] = useState("");
+  // category: หมวดหมู่คอร์สหรือคำถามที่ใช้จัดกลุ่มและแสดงผลในส่วนนี้; setCategory ใช้อัปเดตค่านี้
   //const [category, setCategory] = useState(CATEGORIES[0]);
   const [category, setCategory] = useState<Category>(CATEGORIES[0]);
+  // customCategory: ชื่อหมวดหมู่ที่ผู้ใช้พิมพ์เมื่อเลือกหมวดอื่น ๆ; setCustomCategory ใช้อัปเดตค่านี้
   const [customCategory, setCustomCategory] = useState("");
+  // description: รายละเอียดคอร์สที่ผู้ใช้กรอกในฟอร์ม; setDescription ใช้อัปเดตค่านี้
   const [description, setDescription] = useState("");
+  // isFree: ระบุว่าเป็นคอร์สฟรี เพื่อเลือกส่วนสมัครฟรีหรือส่วนชำระเงิน; setIsFree ใช้อัปเดตค่านี้
   const [isFree, setIsFree] = useState(false);
+  // price: ราคาคอร์สที่กรอกในฟอร์ม ก่อนแปลงเป็นตัวเลขตอนบันทึก; setPrice ใช้อัปเดตค่านี้
   const [price, setPrice] = useState("0");
+  // certificateEnabled: สถานะเปิดใช้งานการออกใบประกาศนียบัตรของคอร์ส; setCertificateEnabled ใช้อัปเดตค่านี้
   const [certificateEnabled, setCertificateEnabled] = useState(true);
+  // certificatePassPercentage: คะแนนร้อยละขั้นต่ำที่กำหนดให้ผ่านเกณฑ์ใบประกาศนียบัตร; setCertificatePassPercentage ใช้อัปเดตค่านี้
   const [certificatePassPercentage, setCertificatePassPercentage] = useState("70");
+  // coverFile: ไฟล์ภาพปกที่รออัปโหลดตอนบันทึกคอร์ส; setCoverFile ใช้อัปเดตค่านี้
   const [coverFile, setCoverFile] = useState<File | null>(null);
+  // coverPreview: URL ชั่วคราวของภาพปกสำหรับแสดงตัวอย่างในฟอร์ม; setCoverPreview ใช้อัปเดตค่านี้
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  // fieldErrors: ข้อความตรวจสอบข้อมูลแยกตามชื่อช่อง เพื่อแสดงข้อผิดพลาดใกล้ช่องกรอก; setFieldErrors ใช้อัปเดตค่านี้
   const [fieldErrors, setFieldErrors] = useState<CourseFieldErrors>({});
+  // error: ข้อผิดพลาดปัจจุบันที่ใช้แจ้งให้ผู้ใช้ทราบในส่วนนี้; setError ใช้อัปเดตค่านี้
   const [error, setError] = useState<string | null>(null);
+  // saving: สถานะกำลังบันทึกข้อมูลของฟอร์มนี้; setSaving ใช้อัปเดตค่านี้
   const [saving, setSaving] = useState(false);
+  // savingStep: ข้อความอธิบายขั้นตอนที่กำลังทำ เช่น อัปโหลดปกหรือบันทึกคอร์ส; setSavingStep ใช้อัปเดตค่านี้
   const [savingStep, setSavingStep] = useState<string | null>(null);
+  // isOffline: สถานะที่เบราว์เซอร์รายงานว่าไม่มีการเชื่อมต่ออินเทอร์เน็ต; setIsOffline ใช้อัปเดตค่านี้
   const [isOffline, setIsOffline] = useState(false);
 
+  // courseCodeRef: อ้างถึงช่องรหัสวิชาเพื่อย้ายโฟกัสเมื่อกรอกข้อมูลไม่ถูกต้อง
   const courseCodeRef = useRef<HTMLInputElement>(null);
+  // titleRef: อ้างถึงช่องชื่อคอร์สเพื่อย้ายโฟกัสเมื่อกรอกข้อมูลไม่ถูกต้อง
   const titleRef = useRef<HTMLInputElement>(null);
+  // customCategoryRef: อ้างถึงช่องชื่อหมวดหมู่เพื่อย้ายโฟกัสเมื่อกรอกข้อมูลไม่ถูกต้อง
   const customCategoryRef = useRef<HTMLInputElement>(null);
+  // priceRef: อ้างถึงช่องราคาเพื่อย้ายโฟกัสเมื่อกรอกข้อมูลไม่ถูกต้อง
   const priceRef = useRef<HTMLInputElement>(null);
   // ref แบบ synchronous กันดับเบิลคลิก/กดรัวๆ ยิง request สร้างคอร์สซ้ำ (state update เป็น async)
   const isSavingRef = useRef(false);
@@ -70,7 +104,9 @@ export default function CourseCreateForm({ workspace }: { workspace: Workspace }
   // แถบแจ้งเตือนด้านบนสุดของจอ: เด้งขึ้นทันทีที่เน็ตหลุด ไม่ต้องรอกดบันทึกก่อนถึงจะรู้
   useEffect(() => {
     setIsOffline(!navigator.onLine);
+    /** ปรับสถานะว่าเบราว์เซอร์กลับมาออนไลน์เพื่อให้ฟอร์มใช้งานได้ตามปกติ */
     const handleOnline = () => setIsOffline(false);
+    /** ปรับสถานะว่าเบราว์เซอร์ออฟไลน์เพื่อให้ฟอร์มแสดงข้อความการเชื่อมต่อ */
     const handleOffline = () => setIsOffline(true);
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
@@ -80,14 +116,19 @@ export default function CourseCreateForm({ workspace }: { workspace: Workspace }
     };
   }, []);
 
+  /** เก็บไฟล์ปกที่เลือกและสร้าง URL ชั่วคราวสำหรับแสดงภาพตัวอย่าง */
   function handleCoverChange(event: ChangeEvent<HTMLInputElement>) {
+    // file: ไฟล์ที่ผู้ใช้เลือกจาก input เพื่อนำไปตรวจและอัปโหลด
     const file = event.target.files?.[0] ?? null;
     setCoverFile(file);
     setCoverPreview(file ? URL.createObjectURL(file) : null);
   }
 
+  /** ตรวจรหัส ชื่อ หมวดหมู่ และราคาคอร์สก่อนอัปโหลดหรือส่งคำขอสร้างคอร์ส */
   function validate(): CourseFieldErrors {
+    // errors: ข้อผิดพลาดแยกตามชื่อช่อง ซึ่งต้องแก้ให้ครบก่อนส่งฟอร์ม
     const errors: CourseFieldErrors = {};
+    // trimmedCode: รหัสวิชาที่ตัดช่องว่างหัวท้ายก่อนตรวจว่ากรอกครบและตรงรูปแบบ
     const trimmedCode = courseCode.trim();
     if (!trimmedCode) {
       errors.courseCode = "กรุณากรอกรหัสวิชา";
@@ -99,10 +140,12 @@ export default function CourseCreateForm({ workspace }: { workspace: Workspace }
 
     // ราคาบังคับเช็คเฉพาะตอนไม่ติ๊ก "คอร์สเรียนฟรี" — ติ๊กฟรีแล้วราคาถูก force เป็น 0 ที่ server อยู่แล้ว
     if (!isFree) {
+      // trimmedPrice: ราคาที่ตัดช่องว่างหัวท้ายเพื่อแยกกรณียังไม่กรอกจากการกรอกศูนย์
       const trimmedPrice = price.trim();
       if (!trimmedPrice) {
         errors.price = "กรุณากรอกราคาคอร์ส หรือติ๊กเลือกคอร์สเรียนฟรี";
       } else {
+        // priceNumber: ค่าราคาที่แปลงเป็นตัวเลขสำหรับตรวจช่วงราคาที่อนุญาต
         const priceNumber = Number(trimmedPrice);
         if (Number.isNaN(priceNumber)) {
           errors.price = "ราคาต้องเป็นตัวเลขเท่านั้น";
@@ -116,11 +159,13 @@ export default function CourseCreateForm({ workspace }: { workspace: Workspace }
     return errors;
   }
 
+  /** แปลงข้อผิดพลาดที่รับมาเป็นข้อความภาษาไทยตามสาเหตุ เช่น เน็ตขาดหรือระบบไม่พร้อม */
   // แปล error จาก server/เครือข่ายให้เป็นภาษาที่เข้าใจง่าย ไม่ใช้ศัพท์เทคนิค
   function toFriendlyMessage(err: unknown): string {
     if (typeof navigator !== "undefined" && !navigator.onLine) return OFFLINE_MESSAGE;
 
     const raw = err instanceof Error ? err.message : String(err);
+    // message: ข้อความผิดพลาดดิบที่แปลงเป็นตัวพิมพ์เล็ก เพื่อเลือกข้อความภาษาไทยตามสาเหตุ
     const message = raw.toLowerCase();
 
     // ข้อความเฉพาะที่ server action ส่งมาแล้ว (เช่น รหัสวิชาซ้ำ) ให้ผ่านตรงๆ ไม่ต้อง map ซ้ำ
@@ -134,6 +179,9 @@ export default function CourseCreateForm({ workspace }: { workspace: Workspace }
     return raw || SYSTEM_ERROR_MESSAGE;
   }
 
+  /** ป้องกันการส่งซ้ำ ตรวจฟอร์ม อัปโหลดปก แล้วเรียก Server Action สร้างคอร์ส */
+  // ศึกษา 3.2.2.6: ผู้สอนส่งฟอร์ม → helper ใน Browser; อัปโหลดปกไป Supabase Storage course-covers แล้วส่ง URL/ข้อมูลไป createCourse
+  // Action คืน courseId จึง router.push ไปจัดการคอร์ส; catch แสดง error (Storage กับ Database เป็นคนละขั้นตอน)
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
 
@@ -147,6 +195,7 @@ export default function CourseCreateForm({ workspace }: { workspace: Workspace }
       return;
     }
 
+    // errors: ข้อผิดพลาดแยกตามชื่อช่อง ซึ่งต้องแก้ให้ครบก่อนส่งฟอร์ม
     const errors = validate();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -159,11 +208,13 @@ export default function CourseCreateForm({ workspace }: { workspace: Workspace }
     }
 
     setFieldErrors({});
+    // finalCategory: หมวดหมู่สุดท้ายที่เลือกจากตัวเลือกหรือข้อความที่ผู้ใช้กรอกเอง
     const finalCategory = category === "อื่นๆ" ? customCategory.trim() : category;
     isSavingRef.current = true;
     setSaving(true);
 
     try {
+      // coverImageUrl: URL ภาพปกที่อัปโหลดสำเร็จและจะส่งบันทึกกับคอร์ส
       let coverImageUrl: string | null = null;
       if (coverFile) {
         setSavingStep("กำลังอัปโหลดปกคอร์ส...");

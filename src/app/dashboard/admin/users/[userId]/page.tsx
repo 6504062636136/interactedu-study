@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: รายละเอียดผู้ใช้สำหรับแอดมิน รวมโปรไฟล์ สิทธิ์ สถานะบัญชี คอร์ส และใบประกาศนียบัตร
+ * เส้นทาง: /dashboard/admin/users/[userId]
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -16,14 +21,19 @@ type DirectoryUser = {
 };
 type AccountState = DirectoryUser & { is_active: boolean; archived_at: string | null };
 
+/** ตรวจสิทธิ์ผู้ดูแล รวมข้อมูลบัญชีจากหลายแหล่ง แล้วกำหนดปุ่มจัดการตามสถานะที่ทราบ */
 export default async function AdminUserDetailPage({ params }: { params: Promise<{ userId: string }> }): Promise<ReactElement> {
+  // userId: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { userId } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // actor: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user: actor },
   } = await supabase.auth.getUser();
   if (!actor) redirect(`/login?redirect=/dashboard/admin/users/${userId}`);
 
+  // actorProfile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: actorProfile } = await supabase
     .from("profiles")
     .select("role, is_active")
@@ -58,8 +68,11 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
     supabase.rpc("admin_get_user_account_state", { p_user_id: userId }),
   ]);
 
+  // profile: ข้อมูลโปรไฟล์ที่ใช้แสดงรายละเอียดหรือเติมข้อมูลผู้ใช้ในส่วนนี้
   const profile = profileRes.data;
+  // directoryUser: ข้อมูลบัญชีเป้าหมายที่ค้นจากผล RPC รายชื่อผู้ใช้
   const directoryUser = ((directoryRes.data ?? []) as DirectoryUser[]).find((row) => row.id === userId);
+  // accountState: ข้อมูลสถานะบัญชีเป้าหมายจาก RPC ที่รองรับการเก็บบัญชีถาวร
   const accountState = accountStateRes.error ? undefined : ((accountStateRes.data ?? []) as AccountState[]).find((row) => row.id === userId);
   if (!directoryUser && !profile && !accountState) notFound();
 
@@ -76,8 +89,11 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
     enrollment_count: 0,
     certificate_count: 0,
   };
+  // hasProfile: ระบุว่าพบโปรไฟล์หรือข้อมูลบทบาทของบัญชีเป้าหมายจากแหล่งใดแหล่งหนึ่ง
   const hasProfile = Boolean(profile || directoryUser?.role || accountState);
+  // archivedAt: เวลาที่บัญชีถูกเก็บถาวร หรือ null หากยังไม่มีข้อมูลว่าถูกเก็บถาวร
   const archivedAt = accountState?.archived_at ?? null;
+  // accountActive: สถานะใช้งานบัญชีที่เลือกจากแหล่งข้อมูลที่พร้อม โดย null หมายถึงยังไม่ทราบสถานะ
   let accountActive: boolean | null = typeof accountState?.is_active === "boolean"
     ? accountState.is_active
     : typeof profile?.is_active === "boolean"
@@ -87,6 +103,7 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
         : null;
   if (accountActive === null && hasProfile) {
     try {
+      // status, error: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้ พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
       const { data: status, error } = await createAdminClient()
         .from("profiles")
         .select("is_active")
@@ -98,6 +115,7 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
       console.error("[admin user detail] account status fallback unavailable", error);
     }
   }
+  // statusDisabledReason: เหตุผลที่ห้ามสลับสถานะบัญชี ใช้ปิดปุ่มและอธิบายให้แอดมินทราบ
   const statusDisabledReason = archivedAt
     ? "บัญชีนี้ถูกลบแล้ว"
     : user.id === actor.id
@@ -107,14 +125,18 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
         : accountActive === null
           ? "ยังไม่ทราบสถานะบัญชี"
           : null;
+  // archiveDisabledReason: เหตุผลที่ห้ามเก็บบัญชีถาวร เช่น เป็นบัญชีตัวเองหรือระบบยังไม่พร้อม
   const archiveDisabledReason = user.id === actor.id
     ? "ไม่สามารถลบบัญชีตัวเอง"
     : !accountState
       ? "ระบบลบบัญชียังไม่พร้อม กรุณาตรวจการตั้งค่าฐานข้อมูล"
       : null;
   const enrollmentCount = Math.max(Number(user.enrollment_count) || 0, enrollmentsRes.data?.length ?? 0);
+  // certificateCount: จำนวนใบประกาศนียบัตรที่ใช้แสดงในสถิติของผู้ใช้
   const certificateCount = Math.max(Number(user.certificate_count) || 0, certificatesRes.data?.length ?? 0);
+  // enrollmentsIncomplete: ระบุว่าประวัติลงทะเบียนที่โหลดมาอาจไม่ครบตามจำนวนที่ระบบรายงาน
   const enrollmentsIncomplete = Boolean(enrollmentsRes.error || (enrollmentsRes.data?.length ?? 0) < enrollmentCount);
+  // certificatesIncomplete: ระบุว่าประวัติใบประกาศนียบัตรที่โหลดมาอาจไม่ครบตามจำนวนที่ระบบรายงาน
   const certificatesIncomplete = Boolean(certificatesRes.error || (certificatesRes.data?.length ?? 0) < certificateCount);
 
   if (directoryRes.error) console.error("[admin user detail] directory", directoryRes.error.message);

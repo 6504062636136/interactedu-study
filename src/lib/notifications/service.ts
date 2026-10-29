@@ -61,6 +61,8 @@ function toInsertRow(input: CreateNotificationInput): NotificationInsertRow {
   };
 }
 
+// ศึกษา 3.2.2.18: helper ของเราใน Server รับเนื้อหา/userId คืน {created,error?}; caller ของเหตุการณ์เป็นผู้ระบุผู้รับ
+// เขียน notifications ด้วย admin client; notifications.user_id อ้าง auth.users.id ตาม migration และต้องตรวจสิทธิ์ธุรกิจใน caller ก่อน
 export async function createNotification(
   input: CreateNotificationInput
 ): Promise<NotificationWriteResult> {
@@ -68,6 +70,7 @@ export async function createNotification(
     const supabase = createAdminClient();
     const row = toInsertRow(input);
 
+    // dedupeKey ใช้ upsert กับ UNIQUE notifications.dedupe_key กันแถวซ้ำ; ignoreDuplicates=false จึงอัปเดตแถวเดิม รวม is_read=false/read_at=null
     const mutation = input.dedupeKey
       ? supabase.from("notifications").upsert(row, {
           onConflict: "dedupe_key",
@@ -97,6 +100,8 @@ export async function createNotification(
   }
 }
 
+// helper รับเนื้อหา คืนผลเขียนเป็น array; หา profiles.role=admin แล้วเติม admin.id ต่อท้าย dedupeKey แยกผู้รับแต่ละคน
+// ถ้าไม่ส่ง dedupeKey จะ insert ทุกครั้ง; query นี้ไม่ได้กรอง is_active/archived_at ของ admin
 export async function notifyAdmins(
   input: NotificationContent
 ): Promise<NotificationWriteResult[]> {

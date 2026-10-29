@@ -1,14 +1,23 @@
+/**
+ * หน้าที่ของไฟล์: เตรียมข้อมูลคอร์สและบทเรียนสำหรับฟอร์มเพิ่มคำถามเข้าคลัง
+ * เส้นทาง: /dashboard/teacher/question-bank/new
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import QuestionBankForm from "@/components/teacher/QuestionBankForm";
 
+/** ตรวจบทบาทและโหลดบทเรียนที่ผู้ใช้สร้างคอร์สไว้ แล้วส่งให้ QuestionBankForm */
 export default async function NewQuestionBankPage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?redirect=/dashboard/teacher/question-bank/new");
 
+  // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (profile?.role !== "teacher" && profile?.role !== "admin") redirect("/");
 
@@ -19,6 +28,7 @@ export default async function NewQuestionBankPage(): Promise<ReactElement> {
   .eq("courses.created_by", user.id)
   .order("order_index", { ascending: true });
 
+    // lessons: บทเรียนที่ใช้แสดงหรือเป็นฐานคำนวณในส่วนนี้
     const lessons = (lessonsData ?? []).map((lesson) => ({
     id: lesson.id,
     courseId: lesson.course_id,

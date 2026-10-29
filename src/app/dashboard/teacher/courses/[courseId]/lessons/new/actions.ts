@@ -467,6 +467,8 @@ async function batchInsertQuestions(
   return "บันทึกตัวเลือกไม่สำเร็จ กรุณาลองใหม่";
 }
 
+// ศึกษา 3.2.2.7: LessonDraftForm ส่ง courseId/moduleId, title, videoUrl, คำถาม/หมุด/ช่วงวิดีโอมา Server Action ของเรา
+// ตรวจผู้สร้างคอร์สและ modules.course_id → สร้าง lessons, lesson_drafts และข้อมูลย่อย; คืน {lessonId,draftId} หรือ {error}
 export async function saveLessonDraft(input: SaveLessonDraftInput): Promise<SaveLessonDraftResult> {
   const supabase = await createClient();
 
@@ -529,6 +531,7 @@ export async function saveLessonDraft(input: SaveLessonDraftInput): Promise<Save
   }
 
   // 3. สร้าง draft ผูกกับ lesson นั้น
+  // draft.id คือ lesson_drafts.id; lesson_id ผูก lessons.id และ teacher_id เก็บผู้บันทึก; video_url เป็น URL ของสื่อที่อัปโหลดแล้ว
   const { data: draft, error: draftError } = await supabase
     .from("lesson_drafts")
     .insert({

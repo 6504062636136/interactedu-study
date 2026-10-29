@@ -94,6 +94,8 @@ function isMissingSchemaField(error: { code?: string; message?: string } | null)
   );
 }
 
+// ศึกษา 3.2.2.14: helper ของเราใน Server รับ client/userId/courseId/includeCorrectAnswers เพื่อโหลดข้อมูลสอบและเฉลยเฉพาะตอนตรวจ
+// enrollment.id ผูกผลเรียน/ผลสอบ; อ่าน scorm_tracking.video_completed และสุ่มจาก course_exam_configs หรือใช้ quiz_questions ทางเดิม
 async function loadCourseExamData(
   supabase: SupabaseClient,
   userId: string,
@@ -337,6 +339,8 @@ export async function getCourseFinalExam(
   };
 }
 
+// CourseFinalExam ส่ง answers ผ่าน POST final-exam → helper ของเราใน Server รับ userId/courseId/answers คืน FinalQuizGrade หรือ throw
+// ตรวจสิทธิ์และเรียนครบทุกบทก่อนเทียบคำตอบกับเฉลย DB; บันทึก quiz_attempts และรายละเอียดรายข้อ แล้ว API พยายามออกใบรับรองเมื่อผ่าน
 export async function gradeCourseFinalExam(
   supabase: SupabaseClient,
   userId: string,
@@ -351,6 +355,7 @@ export async function gradeCourseFinalExam(
 
   // ===== เพิ่มใหม่: เก็บ answer object ทั้งก้อนไว้ (เดิมเก็บแค่ selectedChoiceIndex เป็น number)
   // เพราะ matching/sequencing ไม่มี selectedChoiceIndex ให้ใช้ ต้องเก็บ matchingPairs/sequenceOrder ด้วย
+  // answersByQuestion จับคู่ questionId กับคำตอบที่ Browser ส่ง; ตรวจ ID/จำนวนให้ครบตามชุดที่ Server โหลดใหม่ ไม่รับ score จาก Browser
   const answersByQuestion = new Map<string, FinalQuizAnswer>();
   for (const answer of answers) {
     if (typeof answer.questionId !== "string") throw new Error("Invalid exam answer");
@@ -527,6 +532,8 @@ export async function gradeCourseFinalExam(
     });
 
   const attemptedAt = new Date().toISOString();
+  // filter() เลือกผลรายข้อที่ถูกมานับ; scorePercentage = ถูก/ทั้งหมด × 100 ปัดสองตำแหน่งด้วย Math.round
+  // passPercentage มาจาก courses.certificate_pass_percentage (?? ใช้ 70 เฉพาะ null/undefined); passed คือผล >= เกณฑ์
   const correctAnswers = details.filter((detail) => detail.isCorrect).length;
   const scorePercentage = Math.round((correctAnswers / data.questions.length) * 10000) / 100;
   const passPercentage = Number(data.course.certificate_pass_percentage ?? DEFAULT_PASS_PERCENTAGE);

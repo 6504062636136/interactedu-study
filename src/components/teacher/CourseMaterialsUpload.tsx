@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: รายการเอกสารประกอบคอร์สพร้อมอัปโหลดและลบไฟล์
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน
+ */
 // components/teacher/CourseMaterialsUpload.tsx
 "use client";
 
@@ -15,15 +20,21 @@ interface CourseMaterialsUploadProps {
   initialMaterials: MaterialItem[];
 }
 
+/** เก็บรายการเอกสารเริ่มต้นและจัดการสถานะอัปโหลดหรือลบตาม courseId */
 export default function CourseMaterialsUpload({
   courseId,
   initialMaterials,
 }: CourseMaterialsUploadProps): ReactElement {
+  // materials: รายการเอกสารประกอบคอร์สที่แสดงอยู่; setMaterials ใช้อัปเดตค่านี้
   const [materials, setMaterials] = useState<MaterialItem[]>(initialMaterials);
+  // uploading: สถานะกำลังอัปโหลดเอกสารประกอบคอร์ส; setUploading ใช้อัปเดตค่านี้
   const [uploading, setUploading] = useState<boolean>(false);
+  // error: ข้อผิดพลาดปัจจุบันที่ใช้แจ้งให้ผู้ใช้ทราบในส่วนนี้; setError ใช้อัปเดตค่านี้
   const [error, setError] = useState<string | null>(null);
 
+  /** ขอ URL อัปโหลด ส่งไฟล์ไปที่เก็บ แล้วบันทึกข้อมูลเอกสารเพื่อเพิ่มในรายการ */
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    // file: ไฟล์ที่ผู้ใช้เลือกจาก input เพื่อนำไปตรวจและอัปโหลด
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -53,6 +64,7 @@ export default function CourseMaterialsUpload({
 
       const { uploadUrl, key, publicUrl } = await res.json();
 
+      // putRes: ผลคำขอ PUT ที่ส่งไฟล์ไปยัง URL อัปโหลด ใช้ตรวจว่าอัปโหลดสำเร็จหรือไม่
       const putRes = await fetch(uploadUrl, {
         method: "PUT",
         headers: { "Content-Type": file.type },
@@ -64,7 +76,9 @@ export default function CourseMaterialsUpload({
         return;
       }
 
+      // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
       const supabase = createClient();
+      // inserted, insertError: ผลบันทึกข้อมูลเอกสารประกอบคอร์ส พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
       const { data: inserted, error: insertError } = await supabase
         .from("course_materials")
         .insert({
@@ -93,7 +107,9 @@ export default function CourseMaterialsUpload({
     }
   };
 
+  /** นำเอกสารออกจากหน้าทันทีและเรียก API ลบ โดยคืนรายการเดิมหากลบไม่สำเร็จ */
   const handleRemove = async (materialId: string): Promise<void> => {
+    // prevMaterials: สำเนารายการก่อนลบ ใช้คืนค่าหากคำขอลบเอกสารล้มเหลว
     const prevMaterials = materials;
     setMaterials((prev) => prev.filter((m) => m.id !== materialId));
     setError(null);

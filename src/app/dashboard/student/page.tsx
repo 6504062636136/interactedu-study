@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: สรุปคอร์ส ความก้าวหน้า เวลาเรียน ใบประกาศนียบัตร และข้อเสนอ Plus ของผู้เรียน
+ * เส้นทาง: /dashboard/student
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import { hasStartedLearning, isCourseInLibrary, loadLearningEnrollments, type LearningEnrollment } from "@/lib/courses/learning-enrollment";
 import { loadSavedCourseEnrollments } from "@/lib/courses/course-library";
 // app/dashboard/student/page.tsx
@@ -58,17 +63,22 @@ interface CourseCardData {
   started: boolean;
 }
 
+/** โหลดคอร์สในคลังและประวัติการเรียน แล้วคำนวณสถิติและรายการเรียนต่อ */
 export default async function StudentDashboardPage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login?redirect=/dashboard/student");
 
+  // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profile } = user
     ? await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle()
     : { data: null };
+  // displayFirstName: ชื่อส่วนแรกของผู้เรียนที่ใช้ในข้อความทักทายบนแดชบอร์ด
   const displayFirstName =
     (profile?.full_name?.trim() ||
       (user?.user_metadata?.full_name as string | undefined) ||
@@ -77,6 +87,7 @@ export default async function StudentDashboardPage(): Promise<ReactElement> {
       " "
     )[0];
 
+  // enrollmentData: ผลอ่านข้อมูลการลงทะเบียน
   const { data: enrollmentData } = await loadLearningEnrollments((includeStart) => supabase
     .from("enrollments")
     .select(`membership_order_id, ${includeStart ? "learning_started_at, " : ""}scorm_tracking(lesson_id, last_accessed, video_completed, lesson_status, completed_scos, cmi_data), student_study_time(total_seconds), id, course_id, courses(id, title, cover_image_url)`)
@@ -85,27 +96,37 @@ export default async function StudentDashboardPage(): Promise<ReactElement> {
     .or(`access_expires_at.is.null,access_expires_at.gt.${new Date().toISOString()}`)
     .order("created_at", { ascending: false }));
 
+  // library: ผลโหลดคลังคอร์สที่บันทึกไว้ ใช้แยกการเก็บคอร์สออกจากสิทธิ์ที่ได้ด้วยสมาชิก
   const library = await loadSavedCourseEnrollments(supabase, user.id);
+  // enrollments: รายการลงทะเบียนที่ผ่านเงื่อนไข query และตัวกรองของหน้านี้แล้ว
   const enrollments = ((enrollmentData ?? []) as unknown as EnrollmentRow[]).filter((row) => isCourseInLibrary(row, library.enrollmentIds));
+  // courseIds: รหัสคอร์สที่ใช้จำกัดการอ่านข้อมูลเกี่ยวข้องให้ตรงกับรายการที่กำลังแสดง
   const courseIds = enrollments.map((e) => e.course_id);
+  // ศึกษา 3.2.2.16: Dashboard ฝั่ง Server อ่าน total_seconds แยกจาก tracking; เวลาเรียนสะสมต่างจากผลรวม video_duration_seconds ของคลิป
   const studyTimeResult = enrollments.length
     ? await supabase.from("student_study_time").select("enrollment_id, total_seconds").in("enrollment_id", enrollments.map((e) => e.id))
     : { data: [], error: null };
+  // studyTimeByEnrollment: เวลาเรียนสะสมเป็นวินาที แยกตามรหัสการลงทะเบียน
   const studyTimeByEnrollment = new Map(
     (studyTimeResult.data ?? []).map((row) => [row.enrollment_id, Number(row.total_seconds) || 0]),
   );
+  // totalStudySeconds: เวลาเรียนสะสมรวมทุกการลงทะเบียนที่นำมาแสดง หน่วยวินาที
   const totalStudySeconds = enrollments.reduce((sum, enrollment) => sum + (studyTimeByEnrollment.get(enrollment.id) ?? 0), 0);
 
+  // cards: รายการข้อมูลการ์ดที่สร้างจากคอร์สและผลความก้าวหน้าแล้ว
   const cards: CourseCardData[] = [];
+  // completedCourseCount: จำนวนคอร์สที่บริการสรุปความก้าวหน้าระบุว่าเรียนครบแล้ว
   let completedCourseCount = 0;
 
   if (courseIds.length > 0) {
+    // modulesData: ผลอ่านข้อมูลโมดูลและบทเรียน
     const { data: modulesData } = await supabase
       .from("modules")
       .select("id, course_id, order_index, lessons(id, order_index, title, is_published, video_duration_seconds, scorm_source, scorm_manifest)")
       .in("course_id", courseIds)
       .order("order_index", { ascending: true });
 
+    // trackingData: ผลอ่านข้อมูลความก้าวหน้าการเรียน SCORM
     const { data: trackingData } = await supabase
       .from("scorm_tracking")
       .select("lesson_id, lesson_status, video_completed, enrollment_id, last_accessed, completed_scos")
@@ -114,6 +135,7 @@ export default async function StudentDashboardPage(): Promise<ReactElement> {
         enrollments.map((e) => e.id)
       );
 
+    // modulesByCourse: จัดกลุ่มโมดูลตามรหัสคอร์สเพื่อคำนวณบทเรียนของแต่ละคอร์ส
     const modulesByCourse = new Map<string, (ModuleWithLessons & { course_id: string })[]>();
     for (const m of (modulesData ?? []) as (ModuleWithLessons & { course_id: string })[]) {
       const list = modulesByCourse.get(m.course_id) ?? [];
@@ -125,15 +147,19 @@ export default async function StudentDashboardPage(): Promise<ReactElement> {
       // e.courses เป็น null ได้ถ้า RLS บล็อกคอร์สนี้ (เช่นสถานะไม่ใช่ published ชั่วคราว)
       if (!e.courses) continue;
 
+      // modules: โมดูลและบทเรียนภายในคอร์สที่จัดเตรียมไว้สำหรับส่วนนี้
       const modules = [...(modulesByCourse.get(e.course_id) ?? [])].sort(
         (a, b) => a.order_index - b.order_index
       );
 
+      // allLessons: บทเรียนที่เผยแพร่แล้วและเรียงตามโมดูลกับลำดับบทเรียนสำหรับคำนวณความก้าวหน้า
       const allLessons = modules.flatMap((m) =>
         [...(m.lessons ?? [])].filter((lesson) => lesson.is_published).sort((a, b) => a.order_index - b.order_index)
       );
 
+      // summary: ผลสรุปข้อมูลจากบริการหรือฟังก์ชันกลาง เพื่อให้ส่วนแสดงผลใช้ค่าที่คำนวณไว้ชุดเดียวกัน
       const summary = summarizeStudentProgress(allLessons, ((trackingData ?? []) as TrackingRow[]).filter((row) => row.enrollment_id === e.id));
+      // totalLessons, progress, nextLesson: ผลสรุปจำนวนบทเรียน ความก้าวหน้า หรือบทเรียนเรียนต่อจากบริการกลาง
       const { total: totalLessons, percent: progress, resumeLesson: nextLesson } = summary;
       if (summary.allComplete) completedCourseCount += 1;
 
@@ -156,6 +182,7 @@ export default async function StudentDashboardPage(): Promise<ReactElement> {
     }
   }
 
+  // certificateResult, offerResult, membershipResult: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [certificateResult, offerResult, membershipResult] = await Promise.all([
     supabase.from("certificates")
       .select("id", { count: "exact", head: true })
@@ -175,17 +202,25 @@ export default async function StudentDashboardPage(): Promise<ReactElement> {
       .limit(1)
       .maybeSingle(),
   ]);
+  // certificateCount: จำนวนใบประกาศนียบัตรที่ใช้แสดงในสถิติของผู้ใช้
   const certificateCount = certificateResult.count;
   if (offerResult.error || membershipResult.error) {
     console.error("[student dashboard] Could not load membership", offerResult.error?.message, membershipResult.error?.message);
   }
   const offer = offerResult.data;
+  // membershipExpiresAt: วันหมดอายุสมาชิกที่โหลดได้ หรือ null หากยังไม่มีข้อมูลสมาชิกที่ใช้แสดง
   const membershipExpiresAt = membershipResult.data?.expires_at ?? null;
+  // membershipPrice: ราคาสมาชิก Plus รายเดือนสำหรับแสดงข้อเสนอในแดชบอร์ด
   const membershipPrice = Number(offer?.monthly_price);
+  // annualPrice: ราคาสมาชิก Plus รายปีที่แปลงเป็นตัวเลขจากการตั้งค่า
   const annualPrice = Number(offer?.annual_price);
+  // offerVisible: ระบุว่าข้อเสนอเปิดขาย โหลดสำเร็จ และมีราคารายเดือนที่แสดงได้
   const offerVisible = !offerResult.error && offer?.enabled && Number.isFinite(membershipPrice) && membershipPrice > 0;
+  // paymentReady: ระบุว่าการตั้งค่าฝั่งเซิร์ฟเวอร์ที่จำเป็นต่อการรับชำระเงินมีอยู่ครบตามเงื่อนไขนี้
   const paymentReady = Boolean(process.env.OMISE_SECRET_KEY && (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY) && !membershipResult.error);
+  // membershipActive: ระบุว่ามีวันหมดอายุสมาชิกที่ยังใช้ได้จาก query และโหลดข้อมูลสำเร็จ
   const membershipActive = Boolean(membershipExpiresAt && !membershipResult.error);
+  // canSubscribe: กำหนดว่าจะเปิดให้เริ่มสมัคร Plus จากแดชบอร์ดได้หรือไม่
   const canSubscribe = offerVisible && paymentReady;
 
   return (
@@ -272,6 +307,7 @@ export default async function StudentDashboardPage(): Promise<ReactElement> {
   );
 }
 
+/** แสดงการ์ดสถิติ โดย label เป็นชื่อ value เป็นค่า และ icon/tone กำหนดไอคอนกับสี */
 function StatCard({ label, value, icon: Icon, tone }: { label: string; value: string | number; icon: LucideIcon; tone: string }): ReactElement {
   return (
     <article className="rounded-[20px] border border-slate-200/70 bg-white p-4 shadow-[0_8px_24px_rgba(15,27,61,0.045)] sm:p-5">
@@ -283,7 +319,9 @@ function StatCard({ label, value, icon: Icon, tone }: { label: string; value: st
   );
 }
 
+/** แสดงคอร์สหนึ่งรายการพร้อมความก้าวหน้า เวลาเรียน และปุ่มไปเรียนต่อ */
 function CourseProgressRow({ course }: { course: CourseCardData }): ReactElement {
+  // isDone: ระบุว่าคอร์สในการ์ดนี้มีสถานะหรือความก้าวหน้าว่าเรียนจบแล้ว
   const isDone = course.progress === 100;
   return (
     <div className="flex flex-col gap-4 rounded-[22px] border border-slate-200/70 bg-white p-3 shadow-[0_8px_30px_rgba(15,27,61,0.04)] sm:flex-row sm:items-center sm:p-4">

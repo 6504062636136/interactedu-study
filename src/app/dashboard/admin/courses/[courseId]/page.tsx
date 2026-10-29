@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: พื้นที่จัดการรายละเอียด บทเรียน และใบประกาศนียบัตรของคอร์สสำหรับแอดมิน
+ * เส้นทาง: /dashboard/admin/courses/[courseId]
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -12,6 +17,7 @@ import CourseLifecycleButton from "@/components/courses/CourseLifecycleButton";
 import { CourseWorkspaceSaveButton, CourseWorkspaceSaveProvider } from "@/components/courses/CourseWorkspaceSave";
 import { FileText, ListChecks, MoreHorizontal, Plus } from "lucide-react";
 
+// COURSE_STATUS_LABEL: ข้อความภาษาไทยสำหรับแสดงสถานะวงจรคอร์ส
 const COURSE_STATUS_LABEL: Record<string, string> = {
   draft: "ฉบับร่าง",
   pending: "รออนุมัติ",
@@ -31,9 +37,13 @@ interface CertificateSettings {
   certificate_signatory_title: string | null;
 }
 
+/** โหลดรายละเอียดคอร์ส การตั้งค่าใบประกาศนียบัตร และบทเรียน เพื่อประกอบพื้นที่จัดการคอร์ส */
 export default async function AdminCourseWorkspacePage({ params }: { params: Promise<{ courseId: string }> }): Promise<ReactElement> {
+  // courseId: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { courseId } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // courseRes, certificateRes, lessonsRes: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [courseRes, certificateRes, lessonsRes] = await Promise.all([
     supabase
       .from("courses")
@@ -55,11 +65,16 @@ export default async function AdminCourseWorkspacePage({ params }: { params: Pro
   ]);
   if (!courseRes.data) notFound();
 
+  // course: ข้อมูลคอร์สที่ผูกกับรายการหรือหน้าที่กำลังแสดง ซึ่งอาจเป็น null หากอ่านไม่พบ
   const course = courseRes.data;
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const { data: { user } } = await supabase.auth.getUser();
+  // isOwnCourse: ระบุว่าผู้ใช้ปัจจุบันเป็นผู้สร้างคอร์สนี้ เพื่อเลือกแสดงการตรวจความพร้อมและปุ่มที่เกี่ยวข้อง
   const isOwnCourse = course.created_by === user?.id;
+  // readiness: ผลตรวจความพร้อมของคอร์สจากบริการกลาง ใช้แสดงรายการที่ต้องแก้ก่อนส่งตรวจ
   const readiness = isOwnCourse ? await checkCourseReadiness(courseId) : null;
   const certificate = certificateRes.data as CertificateSettings | null;
+  // lessons: บทเรียนที่ใช้แสดงหรือเป็นฐานคำนวณในส่วนนี้
   const lessons = (lessonsRes.data ?? []) as unknown as AdminLesson[];
 
   return (

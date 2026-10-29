@@ -151,6 +151,8 @@ function drawCenteredWrappedText(
   });
 }
 
+// ศึกษา 3.2.2.15: helper ของเราใน Server รับข้อมูลใบรับรอง/โลโก้ คืน Uint8Array ของ PDF ให้ service อัปโหลด
+// pdf-lib สร้างและวาดหน้า PDF; @pdf-lib/fontkit ช่วยฝังฟอนต์ไทยที่อ่านจากไฟล์ ไม่ได้ตรวจสิทธิ์ออกใบรับรองในฟังก์ชันนี้
 export async function generateCertificatePdf(input: CertificatePdfInput): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);

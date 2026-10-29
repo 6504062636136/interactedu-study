@@ -6,6 +6,8 @@ import { createFetchWithTimeout } from "@/utils/supabase/fetch-with-timeout";
  * สร้าง Supabase client + response object สำหรับใช้ใน middleware.ts
  * ทำหน้าที่ refresh session (คุกกี้) ให้อัตโนมัติทุก request
  */
+// ศึกษา Session: helper ฝั่ง Server รับ NextRequest คืน {supabaseResponse, supabase, user}; getUser() ของ SDK ตรวจตัวตนกับ Auth
+// คุกกี้ที่ refresh ต้องส่งกลับ response; user=null เมื่อ Auth/เครือข่ายผิดพลาด ให้ Proxy ตัดสินสิทธิ์ต่อ
 export async function updateSession(request: NextRequest) {
   console.log("→ [middleware] start:", request.nextUrl.pathname); // ★ เพิ่ม
 

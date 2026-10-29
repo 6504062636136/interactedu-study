@@ -6,6 +6,8 @@ import { createClient } from '@/utils/supabase/server';
 
 export const runtime = 'nodejs';
 
+// ศึกษา 3.2.2.7: Route ฝั่ง Server รับชื่อ/MIME วิดีโอจาก helper upload; ตรวจ teacher/admin แล้วคืน uploadUrl/publicUrl
+// PutObjectCommand และ getSignedUrl มาจาก AWS SDK ใช้กับ R2 ที่รองรับ S3; ลิงก์ PUT มีอายุ 300 วินาที ไม่ได้อัปโหลดไฟล์ใน Route นี้
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();

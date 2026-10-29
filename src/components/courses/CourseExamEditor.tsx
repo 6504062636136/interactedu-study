@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: ตัวแก้ไขข้อสอบท้ายคอร์ส รองรับคำถามหลายรูปแบบ การอัปโหลดภาพ และการกำหนดโควตาสุ่ม
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน
+ */
 "use client";
 
 import { useState } from "react";
@@ -15,9 +20,11 @@ import { MULTI_SELECT_ENABLED, DRAG_DROP_ENABLED } from "@/lib/quiz/config/rollo
 interface ImagePin { id: string; x: number; y: number }
 // ชุดสีไล่ตามลำดับคู่จับคู่ — คู่เดียวกัน (ซ้าย+ขวา) ใช้สีเดียวกันเสมอ (เหมือน 2 ไฟล์ข้างต้น)
 const MATCHING_PAIR_COLORS = ["#0F1B3D", "#00B37E", "#FF8A3D", "#2F8FFF", "#FF4FA3", "#C98500"];
+/** สร้างรหัสชั่วคราวให้แถวในฟอร์มเพื่ออ้างอิงรายการก่อนบันทึกลงฐานข้อมูล */
 function genId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
+/** แปลงขนาด bytes เป็นข้อความขนาดไฟล์ที่อ่านง่าย เช่น KB หรือ MB */
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -55,6 +62,7 @@ interface CustomConstraintRow {
   count: number;
 }
 
+/** สร้างคำถามว่างพร้อมค่าเริ่มต้นของแต่ละรูปแบบสำหรับเพิ่มในฟอร์ม */
 function emptyQuestion(): EditableQuestion {
   return {
     key: crypto.randomUUID(),
@@ -74,13 +82,17 @@ function emptyQuestion(): EditableQuestion {
   };
 }
 
+/** แปลงคำถามที่บันทึกไว้เป็นโครงสร้างแก้ไข โดยเตรียมคู่จับคู่ ลำดับ และช่องเติมคำ */
 // ===== เพิ่มใหม่: แปลงคำถามที่โหลดมาจาก server (CourseExamQuestionInput) เป็น EditableQuestion
 // — ถ้าเป็น matching/sequencing ต้องแยก answerData ออกมาเป็น matchingPairs/sequencingItems ก่อน
 // (sequencing: เรียง items ตาม correct_order เดิม ไม่ใช่ลำดับดิบใน items[] เพื่อให้ครูเห็น "ลำดับที่ถูก"
 // ตามที่เคยบันทึกไว้จริงตอนเปิดมาแก้ไข — เหมือน logic เดียวกับ QuestionBankForm.tsx)
 function toEditableQuestion(input: CourseExamQuestionInput): EditableQuestion {
+  // answerData: โครงสร้างเฉลยตามชนิดคำถาม เช่น จับคู่ เรียงลำดับ หรือเติมคำ
   const answerData = input.answerData ?? null;
+  // matchingPairs: คู่ข้อความซ้ายและขวาที่ใช้แก้ไขคำถามแบบจับคู่
   let matchingPairs: MatchingPairState[] = [{ left: "", right: "" }, { left: "", right: "" }];
+  // sequencingItems: ข้อความตามลำดับเฉลยที่ใช้แก้ไขคำถามแบบเรียงลำดับ
   let sequencingItems: string[] = ["", ""];
   if (input.interactionType === "matching") {
     const pairs = (answerData as MatchingAnswerData | null)?.pairs;
@@ -92,6 +104,7 @@ function toEditableQuestion(input: CourseExamQuestionInput): EditableQuestion {
       sequencingItems = data.correct_order.map((id) => textById.get(id) ?? "");
     }
   }
+  // dragDrop: ข้อมูลโจทย์ ช่องว่าง คำตอบ และตัวลวงของคำถามแบบเติมคำ
   const dragDrop: DragDropFormState =
     (input.interactionType === "drag_drop" ? parseDragDropToForm(answerData) : null) ??
     { template: "", answers: [], distractors: [] };
@@ -110,6 +123,7 @@ function toEditableQuestion(input: CourseExamQuestionInput): EditableQuestion {
   };
 }
 
+/** จัดการคำถาม โหมดเขียนเองหรือสุ่ม และผลการบันทึก โดย readOnly ปิดการแก้ไขเมื่อใช้ตรวจ */
 export default function CourseExamEditor({
   courseId,
   initialQuestions,
@@ -127,18 +141,25 @@ export default function CourseExamEditor({
     customConstraints: { lessonId: string | null; difficulty: Difficulty; count: number }[] | null;
   } | null;
 }) {
+  // router: ตัวควบคุมการเปลี่ยนหน้าและรีเฟรชข้อมูลผ่าน Next.js บนเบราว์เซอร์
   const router = useRouter();
 
   // แท็บที่เปิดอยู่ — ถ้ามีกติกาสุ่มอยู่แล้วให้เปิดแท็บสุ่มก่อน ไม่งั้นเปิดแท็บพิมพ์เอง
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialExamConfig ? "random" : "manual");
 
+  // questions: รายการคำถามที่เตรียมไว้แสดงหรือกำลังแก้ไขในส่วนนี้; setQuestions ใช้อัปเดตค่านี้
   const [questions, setQuestions] = useState<EditableQuestion[]>(
     initialQuestions.length ? initialQuestions.map(toEditableQuestion) : [emptyQuestion()]
   );
+  // saving: สถานะกำลังบันทึกข้อมูลของฟอร์มนี้; setSaving ใช้อัปเดตค่านี้
   const [saving, setSaving] = useState(false);
+  // message: ข้อความผลลัพธ์ที่ใช้แสดงให้ผู้ใช้ทราบตามบริบทของส่วนนี้; setMessage ใช้อัปเดตค่านี้
   const [message, setMessage] = useState<string | null>(null);
+  // error: ข้อผิดพลาดปัจจุบันที่ใช้แจ้งให้ผู้ใช้ทราบในส่วนนี้; setError ใช้อัปเดตค่านี้
   const [error, setError] = useState<string | null>(null);
+  // isDirty: ระบุว่ามีการแก้ข้อมูลในฟอร์มที่ยังไม่ได้บันทึกสำเร็จ; setIsDirty ใช้อัปเดตค่านี้
   const [isDirty, setIsDirty] = useState(false);
+  /** แก้เฉพาะคำถามที่มี key ตรงกัน และทำเครื่องหมายว่าฟอร์มมีการเปลี่ยนแปลง */
   function updateQuestion(key: string, updates: Partial<EditableQuestion>) {
     if (readOnly) return; //กันเผื่อ event หลุดมา
     setIsDirty(true);
@@ -147,12 +168,15 @@ export default function CourseExamEditor({
 
   // ===== เพิ่มใหม่: รูปภาพประกอบคำถาม (ไม่บังคับ) =====
   const [uploadingImageKey, setUploadingImageKey] = useState<string | null>(null);
+  // imageUploadErrors: ข้อความอัปโหลดภาพไม่สำเร็จแยกตาม key ของคำถาม; setImageUploadErrors ใช้อัปเดตค่านี้
   const [imageUploadErrors, setImageUploadErrors] = useState<Record<string, string>>({});
   // ===== เพิ่มใหม่: ชื่อ/ขนาดไฟล์รูป + Lightbox (ปักหมุด/แคปชัน) — key ของคำถาม เพราะหน้านี้มีได้หลายข้อ
   // (ตามแบบ LessonDraftForm.tsx ที่เป็น array คำถามเหมือนกัน) =====
   const [imageFileMeta, setImageFileMeta] = useState<Record<string, { name: string; size: number }>>({});
+  // lightboxKey: key ของคำถามที่กำลังเปิดภาพขยาย หรือ null เมื่อปิดภาพ; setLightboxKey ใช้อัปเดตค่านี้
   const [lightboxKey, setLightboxKey] = useState<string | null>(null);
 
+  /** ตรวจชนิดและขนาดภาพ ขอ signed URL แล้วอัปโหลดภาพและเก็บ URL ไว้กับคำถาม */
   async function handleQuestionImageUpload(key: string, file: File | null) {
     if (readOnly || !file) return;
     const ALLOWED = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -173,6 +197,7 @@ export default function CourseExamEditor({
         setImageUploadErrors((prev) => ({ ...prev, [key]: data.error ?? "เตรียมการอัปโหลดรูปภาพไม่สำเร็จ" }));
         return;
       }
+      // putRes: ผลคำขอ PUT ที่ส่งไฟล์ไปยัง URL อัปโหลด ใช้ตรวจว่าอัปโหลดสำเร็จหรือไม่
       const putRes = await fetch(data.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
       if (!putRes.ok) {
         setImageUploadErrors((prev) => ({ ...prev, [key]: "อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองใหม่" }));
@@ -187,6 +212,7 @@ export default function CourseExamEditor({
     }
   }
 
+  /** เปลี่ยนข้อความตัวเลือกตาม choiceIndex ในคำถามที่ระบุด้วย key */
   function updateChoice(key: string, choiceIndex: number, text: string) {
     if (readOnly) return; 
     setIsDirty(true); 
@@ -196,6 +222,7 @@ export default function CourseExamEditor({
     } : question));
   }
 
+  /** กำหนดตัวเลือกเฉลยของคำถาม โดยปรับตามกติกาชนิดคำถามที่ใช้งาน */
   function setCorrectChoice(key: string, choiceIndex: number) {
     if (readOnly) return;
     setIsDirty(true);
@@ -210,6 +237,7 @@ export default function CourseExamEditor({
     } : question));
   }
 
+  /** เปลี่ยนรูปแบบคำถามและจัดค่าเริ่มต้นของตัวเลือกหรือเฉลยให้ตรงกับรูปแบบใหม่ */
    // ===== เพิ่มใหม่: เปลี่ยน interaction_type ของคำถามข้อนั้น =====
   function setInteractionType(key: string, interactionType: InteractionType) {
     if (readOnly) return;
@@ -245,12 +273,14 @@ export default function CourseExamEditor({
     }));
   }
 
+  /** บันทึกสถานะโจทย์และคำตอบแบบเติมคำของคำถามที่ระบุ */
   function setDragDrop(key: string, dragDrop: DragDropFormState) {
     if (readOnly) return;
     setIsDirty(true);
     setQuestions((current) => current.map((question) => (question.key === key ? { ...question, dragDrop } : question)));
   }
 
+  /** แก้ข้อความด้าน left หรือ right ของคู่จับคู่ตาม index */
   // ===== เพิ่มใหม่: matching (จับคู่ซ้าย-ขวา) — จัดการต่อคำถาม (question.key) เพราะโหมดนี้มีได้หลายข้อ =====
   function updateMatchingPair(key: string, index: number, field: "left" | "right", value: string) {
     if (readOnly) return;
@@ -260,6 +290,7 @@ export default function CourseExamEditor({
       matchingPairs: question.matchingPairs.map((pair, i) => i === index ? { ...pair, [field]: value } : pair),
     } : question));
   }
+  /** เพิ่มคู่จับคู่ว่างให้คำถามที่ระบุ */
   function addMatchingPair(key: string) {
     if (readOnly) return;
     setIsDirty(true);
@@ -267,6 +298,7 @@ export default function CourseExamEditor({
       ? { ...question, matchingPairs: [...question.matchingPairs, { left: "", right: "" }] }
       : question));
   }
+  /** นำคู่จับคู่ตาม index ออกจากคำถามที่ระบุ */
   function removeMatchingPair(key: string, index: number) {
     if (readOnly) return;
     setIsDirty(true);
@@ -275,6 +307,7 @@ export default function CourseExamEditor({
       : question));
   }
 
+  /** แก้ข้อความรายการเรียงลำดับตาม index ของคำถามที่ระบุ */
   // ===== เพิ่มใหม่: sequencing (เรียงลำดับ) — เก็บแค่ text[] เรียงจากบนลงล่าง (ลำดับที่กรอก = ลำดับที่ถูก) =====
   function updateSequencingItem(key: string, index: number, value: string) {
     if (readOnly) return;
@@ -283,6 +316,7 @@ export default function CourseExamEditor({
       ? { ...question, sequencingItems: question.sequencingItems.map((text, i) => i === index ? value : text) }
       : question));
   }
+  /** เพิ่มรายการว่างในคำถามแบบเรียงลำดับ */
   function addSequencingItem(key: string) {
     if (readOnly) return;
     setIsDirty(true);
@@ -290,6 +324,7 @@ export default function CourseExamEditor({
       ? { ...question, sequencingItems: [...question.sequencingItems, ""] }
       : question));
   }
+  /** ลบรายการตาม index ออกจากคำถามแบบเรียงลำดับ */
   function removeSequencingItem(key: string, index: number) {
     if (readOnly) return;
     setIsDirty(true);
@@ -297,6 +332,7 @@ export default function CourseExamEditor({
       ? { ...question, sequencingItems: question.sequencingItems.filter((_, i) => i !== index) }
       : question));
   }
+  /** ย้ายรายการขึ้นหรือลงตาม delta เพื่อกำหนดลำดับเฉลย */
   function moveSequencingItem(key: string, index: number, delta: number) {
     if (readOnly) return;
     setIsDirty(true);
@@ -312,6 +348,7 @@ export default function CourseExamEditor({
   // ===== เพิ่มใหม่: ลาก-วางสลับลำดับ (ตามแบบ LessonDraftForm.tsx/QuestionBankForm.tsx) — ต้องเก็บ
   // key ของคำถามด้วย เพราะหน้านี้มีได้หลายข้อ ลากแค่ในการ์ดคำถามเดียวกันเท่านั้น
   const [draggingSequencing, setDraggingSequencing] = useState<{ key: string; index: number } | null>(null);
+  /** ย้ายรายการจาก fromIndex ไป toIndex เมื่อผู้ใช้ลากเปลี่ยนลำดับ */
   function moveSequencingItemTo(key: string, fromIndex: number, toIndex: number) {
     if (readOnly || fromIndex === toIndex) return;
     setIsDirty(true);
@@ -324,12 +361,14 @@ export default function CourseExamEditor({
     }));
   }
 
+  /** แก้คำบรรยายภาพของคำถามตาม key */
   // ===== เพิ่มใหม่: คำบรรยายใต้ภาพ + หมุดตัวเลขชี้เป้าบนภาพ (ตามแบบ LessonDraftForm.tsx/
   // QuestionBankForm.tsx) — ทุกฟังก์ชันกันด้วย readOnly ก่อนเหมือนตัวจัดการอื่นๆ ในไฟล์นี้ =====
   function updateImageCaption(key: string, text: string) {
     if (readOnly) return;
     updateQuestion(key, { imageCaption: text || null });
   }
+  /** เพิ่มจุดหมายเลขบนภาพ โดย x และ y เป็นตำแหน่งร้อยละภายในภาพ */
   function addImagePin(key: string, x: number, y: number) {
     if (readOnly) return;
     setIsDirty(true);
@@ -337,6 +376,7 @@ export default function CourseExamEditor({
       ? { ...question, imagePins: [...(question.imagePins ?? []), { id: genId(), x, y }] }
       : question));
   }
+  /** ลบจุดบนภาพที่มี pinId ตรงกัน */
   function removeImagePin(key: string, pinId: string) {
     if (readOnly) return;
     setIsDirty(true);
@@ -344,6 +384,7 @@ export default function CourseExamEditor({
       ? { ...question, imagePins: (question.imagePins ?? []).filter((p) => p.id !== pinId) }
       : question));
   }
+  /** นำจุดที่เพิ่มล่าสุดออกจากภาพคำถาม */
   function undoLastImagePin(key: string) {
     if (readOnly) return;
     setIsDirty(true);
@@ -351,6 +392,7 @@ export default function CourseExamEditor({
       ? { ...question, imagePins: (question.imagePins ?? []).slice(0, -1) }
       : question));
   }
+  /** ล้างจุดทั้งหมดบนภาพของคำถามที่ระบุ */
   function clearImagePins(key: string) {
     if (readOnly) return;
     setIsDirty(true);
@@ -359,6 +401,7 @@ export default function CourseExamEditor({
       : question));
   }
 
+  /** ตรวจความครบถ้วนและเฉลยตามชนิดคำถาม แล้วแปลงเป็น payload เพื่อบันทึกข้อสอบท้ายคอร์ส */
   async function save() {
     if (readOnly) return; // ⬅️ ใหม่: กันยิง action จากฝั่ง admin เด็ดขาด
 
@@ -447,6 +490,7 @@ export default function CourseExamEditor({
       // ===== เพิ่มใหม่: แปลง matchingPairs/sequencingItems เป็น answerData (jsonb) ก่อนส่งให้ server
       // — sequencing ใช้ลำดับที่กรอกจากบนลงล่างเป็นลำดับที่ถูกต้องเลย (เหมือน QuestionBankForm.tsx)
       const payloadQuestions: CourseExamQuestionInput[] = questions.map((q) => {
+        // answerData: โครงสร้างเฉลยตามชนิดคำถาม เช่น จับคู่ เรียงลำดับ หรือเติมคำ
         let answerData: MatchingAnswerData | SequencingAnswerData | DragDropAnswerData | null = null;
         if (q.interactionType === "matching") {
           const pairs = q.matchingPairs
@@ -489,17 +533,23 @@ export default function CourseExamEditor({
     }
   }
 
+  // customConstraints: รายการโควตาสุ่มที่ระบุบทเรียน ระดับความยาก และจำนวนข้อ; setCustomConstraints ใช้อัปเดตค่านี้
   const [customConstraints, setCustomConstraints] = useState<CustomConstraintRow[]>(
     initialExamConfig?.customConstraints?.length
       ? initialExamConfig.customConstraints.map((c) => ({ ...c, lessonId: c.lessonId ?? "", key: crypto.randomUUID() }))
       : [{ key: crypto.randomUUID(), lessonId: lessons[0]?.id ?? "", difficulty: "easy", count: 1 }]
   );
+  // configSaving: สถานะกำลังบันทึกข้อกำหนดการสุ่ม ซึ่งแยกจากการบันทึกคำถามเขียนเอง; setConfigSaving ใช้อัปเดตค่านี้
   const [configSaving, setConfigSaving] = useState(false);
+  // configMessage: ข้อความบันทึกข้อกำหนดการสุ่มสำเร็จ; setConfigMessage ใช้อัปเดตค่านี้
   const [configMessage, setConfigMessage] = useState<string | null>(null);
+  // configError: ข้อความผิดพลาดของการบันทึกข้อกำหนดการสุ่ม; setConfigError ใช้อัปเดตค่านี้
   const [configError, setConfigError] = useState<string | null>(null);
 
+  // constraintSum: จำนวนข้อรวมจากโควตาสุ่มทุกแถว
   const constraintSum = customConstraints.reduce((sum, c) => sum + c.count, 0);
 
+  /** บันทึกโควตาสุ่มข้อสอบตามบทเรียน ระดับความยาก และจำนวนที่กำหนด */
   async function saveConfig() {
     if (readOnly) return; // ⬅️ ใหม่
     if (lessons.length === 0) {
@@ -531,15 +581,20 @@ export default function CourseExamEditor({
     }
   }
 
+  /** แก้ข้อกำหนดการสุ่มแถวที่มี key ตรงกัน */
   function updateConstraint(key: string, updates: Partial<CustomConstraintRow>) {
     if (readOnly) return; // ⬅️ ใหม่
     setCustomConstraints((current) => current.map((c) => (c.key === key ? { ...c, ...updates } : c)));
   }
 
+  // previewQuestions: คำถามที่ทดลองสุ่มได้สำหรับแสดงตัวอย่างก่อนยืนยันการตั้งค่า; setPreviewQuestions ใช้อัปเดตค่านี้
   const [previewQuestions, setPreviewQuestions] = useState<PreviewQuestion[] | null>(null);
+  // previewLoading: สถานะกำลังขอตัวอย่างข้อสอบจากการสุ่ม; setPreviewLoading ใช้อัปเดตค่านี้
   const [previewLoading, setPreviewLoading] = useState(false);
+  // previewError: ข้อความผิดพลาดเมื่อทดลองสุ่มข้อสอบไม่สำเร็จ; setPreviewError ใช้อัปเดตค่านี้
   const [previewError, setPreviewError] = useState<string | null>(null);
 
+  /** ทดลองสุ่มข้อสอบด้วยข้อกำหนดปัจจุบันและแสดงคำถามตัวอย่างก่อนบันทึก */
   async function handlePreview() {
     // หมายเหตุ: ดูตัวอย่างเป็น read-only อยู่แล้วโดยธรรมชาติ (แค่สุ่มโชว์ ไม่เขียนอะไรลง DB)
     // เลยยังปล่อยให้ admin กดดูได้แม้ readOnly=true — ไม่ต้อง guard
@@ -574,6 +629,7 @@ export default function CourseExamEditor({
     }
   }
 
+  /** เลือกคลาสปุ่มแท็บตามว่า tab เป็นแท็บที่กำลังเปิดหรือไม่ */
   const tabButtonClass = (tab: ActiveTab) =>
     `flex-1 rounded-xl px-5 py-4 text-left transition ${
       activeTab === tab

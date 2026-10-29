@@ -67,6 +67,8 @@ function certificateNumber(userId: string, course: CourseRow, issuedAt: Date): s
   return `CERT-${date}-${courseCode}-${suffix}`;
 }
 
+// ศึกษา 3.2.2.15: final-exam POST/issue API เรียก helper ฝั่ง Server รับ client/userId/courseId/attemptId คืน EnsureCertificateResult หรือ throw
+// ตรวจ user/ใบเดิม → enrollment/เปิดใบรับรอง/เรียนครบ/คะแนน quiz_attempts → PDF → Storage → RPC → แจ้งผู้เรียนและผู้สร้างคอร์ส
 export async function ensureCertificateForCourse({
   supabase,
   userId,
@@ -192,6 +194,7 @@ export async function ensureCertificateForCourse({
   const completedLessonIds = new Set(tracking.filter((row) => row.video_completed).map((row) => row.lesson_id));
 
   const scoredRows = ((attemptsData ?? []) as QuizAttemptRow[]).filter((row) => row.score !== null);
+  // trustedAttempt เลือก quiz_attempts.id ของ enrollment นี้ตาม attemptId หรือแถวล่าสุด; scorePercentage อ่านจาก DB ไม่ใช่คะแนนที่ UI ส่ง
   const trustedAttempt = attemptId
     ? scoredRows.find((row) => row.id === attemptId)
     : [...scoredRows].sort((a, b) =>
@@ -233,6 +236,7 @@ export async function ensureCertificateForCourse({
 
   const issuedAt = new Date();
   const number = certificateNumber(userId, course, issuedAt);
+  // pdfPath คือ object path ใน bucket certificates; มี courses.id/user.id/เลขใบรับรอง ไม่ใช่ public URL ของไฟล์
   const pdfPath = `${courseId}/${userId}/${number}.pdf`;
   const learnerName = profile?.full_name?.trim() || user.email?.split("@")[0] || "Learner";
   let logoBytes: Uint8Array | null = null;
@@ -292,6 +296,8 @@ export async function ensureCertificateForCourse({
     throw new Error(`Certificate PDF upload failed: ${uploadError.message}`);
   }
 
+  // rpc() ของ Supabase เรียกฟังก์ชัน PostgreSQL issue_course_certificate ตรวจสิทธิ์/ผลเรียน/คะแนน/ไฟล์ซ้ำก่อน INSERT certificates
+  // migration 202609070002 เปลี่ยน certificates.attempt_id ให้ชี้ quiz_attempts.id; UNIQUE(user_id,course_id) กันใบซ้ำแม้ขอพร้อมกัน
   const { data: issuedData, error: issueError } = await supabase.rpc("issue_course_certificate", {
     p_course_id: courseId,
     p_attempt_id: trustedAttempt.id,

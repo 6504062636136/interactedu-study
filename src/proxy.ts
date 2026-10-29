@@ -10,6 +10,8 @@ const ROLE_ROUTES: Record<string, string> = {
 const PROTECTED_PREFIXES = ["/dashboard", "/play/"];
 const AUTH_ONLY_PAGES = ["/login", "/signup"];
 
+// ศึกษา 3.2.2.2: Next.js เรียก Proxy ฝั่ง Server ก่อนเส้นทางที่ตรง matcher; รับ request คืน response/redirect
+// updateSession เป็น helper ของเรา อ่าน user จาก Supabase Auth และส่งคุกกี้ session กลับ Browser
 export async function proxy(request: NextRequest) {
 
   // ข้าม prefetch request ของ Next.js ไม่ต้อง refresh session ซ้ำ กัน race กับ navigation จริง
@@ -19,6 +21,7 @@ export async function proxy(request: NextRequest) {
   const { supabaseResponse, supabase, user } = await updateSession(request);
   const { pathname } = request.nextUrl;
 
+  // some() ถ้ามี prefix ใดตรงจะได้ true; || รับเงื่อนไขอีกกลุ่ม ส่วน && ใช้เมื่อเงื่อนไขทั้งสองต้องจริง
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))
     || /^\/courses\/[^/]+\/(?:enroll|success)(?:\/|$)/.test(pathname);
   const isAuthPage = AUTH_ONLY_PAGES.some((p) => pathname.startsWith(p));
@@ -75,6 +78,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // โค้ดจริงคืน 503 เมื่ออ่าน role ไม่ได้ในหน้าป้องกัน/API; คอมเมนต์เดิมบางช่วงด้านบน/ล่างยังกล่าวว่าปล่อยผ่าน
   if ((roleLookupTimedOut || profileLookupFailed) && (isProtected || pathname.startsWith("/api"))) {
     return new NextResponse("ตรวจสอบสถานะบัญชีไม่สำเร็จ กรุณาลองใหม่", { status: 503 });
   }

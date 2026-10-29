@@ -16,10 +16,13 @@ type ChargeState =
   | { step: "error"; message: string };
 
 export default function OmiseQrPayment({ courseId, slug }: OmiseQrPaymentProps): ReactElement {
+  // state คือขั้นตอน QR ที่ Browser แสดง; setState ของ React เปลี่ยน idle/loading/qr/success/error ไม่ใช่สถานะใน Database
   const [state, setState] = useState<ChargeState>({ step: "idle" });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const router = useRouter();
 
+  // ศึกษา 3.2.2.4: ผู้เรียนกดชำระ → helper ใน Browser ส่ง POST {courseId} ไป create-charge เพื่อขอ QR
+  // JSON.stringify แปลง object เป็นข้อความส่ง HTTP; res.json() แปลงคำตอบกลับเป็น object; HTTP/QR ผิดพลาดแสดง error
   const startPayment = async (): Promise<void> => {
     setState({ step: "loading" });
     try {
@@ -41,6 +44,7 @@ export default function OmiseQrPayment({ courseId, slug }: OmiseQrPaymentProps):
     }
   };
 
+  // useEffect ของ React เริ่ม polling chargeId ทุก 3 วินาทีเมื่อมี QR; cleanup clearInterval ตอนเปลี่ยน state/ออกจากหน้า
   useEffect(() => {
     if (state.step !== "qr") return;
 

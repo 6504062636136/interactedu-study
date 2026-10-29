@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: สรุปรายชื่อผู้เรียน ความก้าวหน้า และคะแนนในคอร์สของผู้สอน
+ * เส้นทาง: /dashboard/teacher/students
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import { redirect } from "next/navigation";
 import type { ReactElement } from "react";
 import TeacherStudentsClient, {
@@ -50,6 +55,7 @@ interface TrackingRow {
   quiz_attempted_at: string | null;
 }
 
+/** ถือว่าบทเรียนเสร็จเมื่อ tracking ระบุ video_completed หรือสถานะ completed/passed */
 function isCompleted(row: TrackingRow | undefined): boolean {
   return Boolean(
     row &&
@@ -57,10 +63,12 @@ function isCompleted(row: TrackingRow | undefined): boolean {
   );
 }
 
+/** เลือกคะแนนที่บันทึกจริงล่าสุด จัดให้อยู่ระหว่าง 0–100 และระบุว่าเป็นคะแนนคอร์สหรือควิซ */
 function scoreFromTracking(rows: TrackingRow[]): {
   score: number | null;
   label: string | null;
 } {
+  // scoredRows: tracking ที่มีคะแนนยืนยันแล้ว เรียงจากวันที่ทำล่าสุดก่อน
   const scoredRows = rows
     .filter(
       (row) =>
@@ -77,6 +85,7 @@ function scoreFromTracking(rows: TrackingRow[]): {
   const latest = scoredRows[0];
   if (!latest) return { score: null, label: null };
 
+  // numericScore: คะแนนล่าสุดที่แปลงเป็นตัวเลขก่อนตรวจช่วงและปัดทศนิยม
   const numericScore = Number(latest.score_raw);
   if (!Number.isFinite(numericScore)) return { score: null, label: null };
 
@@ -86,21 +95,29 @@ function scoreFromTracking(rows: TrackingRow[]): {
   };
 }
 
+/** อ่านคอร์สที่ผู้ใช้สร้าง แล้วรวมการลงทะเบียน โปรไฟล์ บทเรียน และ tracking ให้ตารางผู้เรียน */
+// ศึกษา 3.2.2.17: Server Component ของเราอ่าน user → courses.created_by=user.id → enrollments.approved ของ courseIds
+// อ่าน profiles/modules/lessons/scorm_tracking รวมเป็น rows ส่ง TeacherStudentsClient; ไม่มีคอร์ส/ผู้เรียนแสดงว่าง, query error ส่ง loadError
 export default async function TeacherStudentsPage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login?next=/dashboard/teacher/students");
 
+  // courseData, courseError: ผลอ่านข้อมูลคอร์ส พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: courseData, error: courseError } = await supabase
     .from("courses")
     .select("id, title")
     .eq("created_by", user.id)
     .order("title", { ascending: true });
 
+  // courses: รายการคอร์สที่ใช้แสดงหรือคำนวณในหน้านี้
   const courses = (courseData ?? []) as CourseRow[];
+  // courseOptions: รหัสและชื่อคอร์สสำหรับตัวเลือกกรองรายชื่อผู้เรียน
   const courseOptions: TeacherCourseOption[] = courses.map((course) => ({
     id: course.id,
     title: course.title,
@@ -120,7 +137,9 @@ export default async function TeacherStudentsPage(): Promise<ReactElement> {
     return <TeacherStudentsClient courses={[]} rows={[]} />;
   }
 
+  // courseIds: รหัสคอร์สที่ใช้จำกัดการอ่านข้อมูลเกี่ยวข้องให้ตรงกับรายการที่กำลังแสดง
   const courseIds = courses.map((course) => course.id);
+  // enrollmentData, enrollmentError: ผลอ่านข้อมูลการลงทะเบียน พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: enrollmentData, error: enrollmentError } = await supabase
     .from("enrollments")
     .select("id, student_id, course_id, created_at")
@@ -138,14 +157,18 @@ export default async function TeacherStudentsPage(): Promise<ReactElement> {
     );
   }
 
+  // enrollments: รายการลงทะเบียนที่ผ่านเงื่อนไข query และตัวกรองของหน้านี้แล้ว
   const enrollments = (enrollmentData ?? []) as EnrollmentRow[];
   if (enrollments.length === 0) {
     return <TeacherStudentsClient courses={courseOptions} rows={[]} />;
   }
 
+  // studentIds: รหัสผู้เรียนที่ไม่ซ้ำกันสำหรับอ่านโปรไฟล์ในคำขอเดียว
   const studentIds = [...new Set(enrollments.map((enrollment) => enrollment.student_id))];
+  // enrollmentIds: รหัสการลงทะเบียนที่ใช้จับคู่และอ่านข้อมูลความก้าวหน้า
   const enrollmentIds = enrollments.map((enrollment) => enrollment.id);
 
+  // profilesResult, modulesResult, trackingResult: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [profilesResult, modulesResult, trackingResult] = await Promise.all([
     supabase
       .from("profiles")
@@ -166,13 +189,20 @@ export default async function TeacherStudentsPage(): Promise<ReactElement> {
 
   const queryErrors = [profilesResult.error, modulesResult.error, trackingResult.error].filter(Boolean);
 
+  // profiles: รายการโปรไฟล์ที่ใช้เติมข้อมูลผู้เรียนหรือเจ้าของรายการ
   const profiles = (profilesResult.data ?? []) as ProfileRow[];
+  // modules: โมดูลและบทเรียนภายในคอร์สที่จัดเตรียมไว้สำหรับส่วนนี้
   const modules = (modulesResult.data ?? []) as unknown as ModuleRow[];
+  // trackingRows: แถวความก้าวหน้าที่อ่านได้จากฐานข้อมูล ก่อนจัดกลุ่มหรือสรุปผล
   const trackingRows = (trackingResult.data ?? []) as TrackingRow[];
 
+  // courseById: ข้อมูลคอร์สที่ค้นได้โดยรหัส เพื่อเชื่อมข้อมูลกับแต่ละการลงทะเบียน
   const courseById = new Map(courses.map((course) => [course.id, course]));
+  // profileById: ข้อมูลโปรไฟล์ที่ค้นได้โดยรหัสผู้ใช้ เพื่อเติมชื่อและข้อมูลผู้เรียน
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  // lessonsByCourse: จัดกลุ่มบทเรียนตามรหัสคอร์สเพื่อใช้สรุปข้อมูลรายคอร์ส
   const lessonsByCourse = new Map<string, LessonRow[]>();
+  // trackingByEnrollment: จัดกลุ่ม tracking ตามรหัสการลงทะเบียน เพื่อแยกความก้าวหน้าของแต่ละผู้เรียน
   const trackingByEnrollment = new Map<string, TrackingRow[]>();
 
   for (const moduleRow of modules) {
@@ -190,23 +220,33 @@ export default async function TeacherStudentsPage(): Promise<ReactElement> {
     trackingByEnrollment.set(tracking.enrollment_id, existingRows);
   }
 
+  // rows: ข้อมูลผู้เรียนต่อการลงทะเบียน รวมชื่อ คอร์ส ความก้าวหน้า บทเรียนถัดไป และคะแนน
   const rows: TeacherStudentProgressRow[] = enrollments.flatMap((enrollment) => {
+    // course: ข้อมูลคอร์สที่ผูกกับรายการหรือหน้าที่กำลังแสดง ซึ่งอาจเป็น null หากอ่านไม่พบ
     const course = courseById.get(enrollment.course_id);
     if (!course) return [];
 
+    // profile: ข้อมูลโปรไฟล์ที่ใช้แสดงรายละเอียดหรือเติมข้อมูลผู้ใช้ในส่วนนี้
     const profile = profileById.get(enrollment.student_id);
+    // lessons: บทเรียนที่ใช้แสดงหรือเป็นฐานคำนวณในส่วนนี้
     const lessons = lessonsByCourse.get(enrollment.course_id) ?? [];
+    // enrollmentTracking: ประวัติการเรียนเฉพาะการลงทะเบียนที่กำลังสร้างข้อมูลแสดงผล
     const enrollmentTracking = trackingByEnrollment.get(enrollment.id) ?? [];
+    // trackingByLesson: จับคู่รหัสบทเรียนกับ tracking เพื่อเช็กความสำเร็จของบทเรียนได้โดยตรง
     const trackingByLesson = new Map(
       enrollmentTracking.map((tracking) => [tracking.lesson_id, tracking])
     );
+    // completedLessons: จำนวนบทเรียนที่ tracking ระบุว่าเสร็จแล้วตามกติกาของหน้านี้
     const completedLessons = lessons.filter((lesson) =>
       isCompleted(trackingByLesson.get(lesson.id))
     ).length;
+    // totalLessons: จำนวนบทเรียนที่นำมาคำนวณหรือแสดงในส่วนนี้
     const totalLessons = lessons.length;
+    // progress: เปอร์เซ็นต์ความก้าวหน้าที่คำนวณจากบทเรียนที่เสร็จเทียบกับบทเรียนทั้งหมด
     const progress =
       totalLessons > 0 ? Math.min(100, Math.round((completedLessons / totalLessons) * 100)) : 0;
     const nextLesson = lessons.find((lesson) => !isCompleted(trackingByLesson.get(lesson.id)));
+    // ข้อจำกัด: หน้านี้ยังอ่านคะแนนผ่าน scoreFromTracking/scorm_tracking ไม่ได้อ่าน quiz_attempts ซึ่ง Final Exam ปัจจุบันใช้เก็บผลหลัก
     const latestScore = scoreFromTracking(enrollmentTracking);
 
     return [

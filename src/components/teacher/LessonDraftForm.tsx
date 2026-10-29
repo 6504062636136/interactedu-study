@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: ตัวแก้ไขฉบับร่างบทเรียน วิดีโอ ช่วงเนื้อหา และควิซแทรก ก่อนบันทึกหรือส่งตรวจ
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน ส่วน useRef เก็บค่าอ้างอิงที่ไม่สั่งแสดงผลใหม่
+ */
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactElement } from "react";
@@ -62,6 +67,7 @@ interface BankQuestionOption {
   choices: { text: string; isCorrect: boolean }[];
 }
 
+/** สร้างคำถามว่างตาม interactionType พร้อมผูก timestampSeconds ที่จะแทรกในวิดีโอ */
 function createEmptyQuestion(
   timestampSeconds: number | null,
   interactionType: QuizInteractionType = "multiple_choice"
@@ -103,30 +109,43 @@ function createEmptyQuestion(
   };
 }
 
+/** แปลงวินาทีเป็นข้อความนาที:วินาทีสำหรับตำแหน่งควิซและตัวเล่นวิดีโอ */
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+/** จัดการข้อมูลบทเรียน วิดีโอ และคำถาม โดย initialData ใช้เปิดฉบับร่างเดิม และ workspace เลือกพื้นที่ใช้งาน */
 export default function LessonDraftForm({
   courseId,
   moduleId,
   initialData,
   workspace = "teacher",
 }: LessonDraftFormProps): ReactElement {
+  // isAdmin: ระบุว่าเปิดตัวแก้ไขในพื้นที่แอดมินเพื่อเลือกข้อความหรือเส้นทางที่เกี่ยวข้อง
   const isAdmin = workspace === "admin";
+  // router: ตัวควบคุมการเปลี่ยนหน้าและรีเฟรชข้อมูลผ่าน Next.js บนเบราว์เซอร์
   const router = useRouter();
+  // isEditMode: ระบุว่ามี initialData จึงกำลังแก้บทเรียนเดิมแทนการสร้างใหม่
   const isEditMode = !!initialData;
 
+  // activeTab: แท็บที่กำลังเปิดในตัวแก้ไข ใช้เลือกส่วนข้อมูลที่แสดง; setActiveTab ใช้อัปเดตค่านี้
   const [activeTab, setActiveTab] = useState<TabKey>("info");
 
+  // title: ชื่อที่ใช้แสดงหรือค่าชื่อที่กำลังแก้ไขในฟอร์มส่วนนี้; setTitle ใช้อัปเดตค่านี้
   const [title, setTitle] = useState<string>(initialData?.title ?? "");
+  // contentHtml: เนื้อหาบทเรียนรูปแบบ HTML ที่กำลังแก้ไขในฉบับร่าง; setContentHtml ใช้อัปเดตค่านี้
   const [contentHtml, setContentHtml] = useState<string>(initialData?.contentHtml ?? "");
+  // videoFile: ไฟล์วิดีโอใหม่ที่เลือกสำหรับบทเรียน; setVideoFile ใช้อัปเดตค่านี้
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  // videoUrl: URL วิดีโอที่ใช้อยู่หรืออัปโหลดสำเร็จแล้วสำหรับบันทึกในฉบับร่าง; setVideoUrl ใช้อัปเดตค่านี้
   const [videoUrl, setVideoUrl] = useState<string | null>(initialData?.videoUrl ?? null);
+  // videoPreviewUrl: URL ชั่วคราวสำหรับเปิดตัวอย่างวิดีโอที่เลือกในเครื่อง; setVideoPreviewUrl ใช้อัปเดตค่านี้
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  // uploadingVideo: สถานะกำลังส่งไฟล์วิดีโอขึ้นที่เก็บ; setUploadingVideo ใช้อัปเดตค่านี้
   const [uploadingVideo, setUploadingVideo] = useState<boolean>(false);
+  // uploadProgress: ความคืบหน้าการอัปโหลดวิดีโอสำหรับแถบแสดงเปอร์เซ็นต์; setUploadProgress ใช้อัปเดตค่านี้
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   // เก็บข้อมูลช่วงเดิมเมื่อแก้บทเรียน โดยไม่มีตัวแบ่งช่วงในหน้าผู้สอน
   const [videoSegments, setVideoSegments] = useState<ExistingDraftData["videoSegments"]>(
@@ -137,7 +156,9 @@ export default function LessonDraftForm({
   const initialVideoQuizzes =
     initialData?.questions.filter((q) => q.timestampSeconds != null).map((q) => ({ key: genId(), ...q })) ?? [];
 
+    // videoQuizQuestions: คำถามที่ผู้สอนจัดวางไว้ตามเวลาในวิดีโอ; setVideoQuizQuestions ใช้อัปเดตค่านี้
     const [videoQuizQuestions, setVideoQuizQuestions] = useState<QuestionState[]>(initialVideoQuizzes);
+  // randomMarkers: จุดเวลาที่ให้ระบบสุ่มคำถามจากคลังพร้อมระดับความยาก; setRandomMarkers ใช้อัปเดตค่านี้
   const [randomMarkers, setRandomMarkers] = useState<RandomMarkerState[]>(
     initialData?.randomMarkers?.map((m) => ({ key: genId(), ...m })) ?? []
   );
@@ -147,14 +168,20 @@ export default function LessonDraftForm({
 
   // ---- Modal ปักหมุด ----
   const [pinModalOpen, setPinModalOpen] = useState(false);
+  // pinModalMode: วิธีเพิ่มควิซในหน้าต่างปักจุด เช่น เขียนเอง เลือกจากคลัง หรือสุ่ม; setPinModalMode ใช้อัปเดตค่านี้
   const [pinModalMode, setPinModalMode] = useState<QuizSourceMode>("custom");
+  // pinModalTimestamp: วินาทีในวิดีโอที่ควิซหรือจุดสุ่มใหม่จะปรากฏ; setPinModalTimestamp ใช้อัปเดตค่านี้
   const [pinModalTimestamp, setPinModalTimestamp] = useState(0);
+  // bankOptions: คำถามจากคลังที่โหลดมาให้เลือกผูกกับบทเรียน; setBankOptions ใช้อัปเดตค่านี้
   const [bankOptions, setBankOptions] = useState<BankQuestionOption[]>([]);
+  // bankLoading: สถานะกำลังโหลดคำถามจากคลังให้เลือก; setBankLoading ใช้อัปเดตค่านี้
   const [bankLoading, setBankLoading] = useState(false);
+  // selectedBankQuestionId: รหัสคำถามจากคลังที่เลือกในหน้าต่างเพิ่มควิซ; setSelectedBankQuestionId ใช้อัปเดตค่านี้
   const [selectedBankQuestionId, setSelectedBankQuestionId] = useState<string | null>(null);
   // ===== เพิ่มใหม่: ปุ่มกรองระดับความยากในแท็บ "เลือกจากคลังข้อสอบ" — กรองจาก bankOptions ชุดเดียวกัน
   // กับที่ใช้เรนเดอร์รายการ/ตัวนับ เพื่อไม่ให้ตัวนับกับรายการขัดกันเหมือนที่ตัด bank_random ออกไปแล้ว =====
   const [bankDifficultyFilter, setBankDifficultyFilter] = useState<"all" | "easy" | "medium" | "hard">("all");
+  // randomDifficulty: ระดับความยากของจุดสุ่มคำถามที่จะเพิ่มในวิดีโอ; setRandomDifficulty ใช้อัปเดตค่านี้
   const [randomDifficulty, setRandomDifficulty] = useState<"easy" | "medium" | "hard">("medium");
   // ★ เพิ่มใหม่: ประเภทคำถามที่จะสร้างในแท็บ "สร้างคำถามใหม่" — เดิม hardcode เป็น multiple_choice
   // เสมอ ทั้งที่ quiz_questions มีคอลัมน์ interaction_type รองรับ true_false อยู่แล้ว ตอนนี้เพิ่ม
@@ -165,6 +192,7 @@ export default function LessonDraftForm({
 
   // drag_drop: ฟอร์มเติมคำ (โจทย์ที่ใช้ ___ แทนช่องว่าง) แยกต่อคำถาม (key) — คำถามที่โหลดจาก answer_data เดิมจะแปลงกลับมาเป็นฟอร์มตอนเปิดครั้งแรก
   const [dragDropForms, setDragDropForms] = useState<Record<string, DragDropFormState>>({});
+  /** คืนสถานะฟอร์มเติมคำของคำถาม โดยใช้ค่าที่แก้ล่าสุดหรือแปลงจากเฉลยเดิม */
   function getDragDropForm(q: QuestionState): DragDropFormState {
     return (
       dragDropForms[q.key] ??
@@ -172,22 +200,33 @@ export default function LessonDraftForm({
     );
   }
 
+  // saving: สถานะกำลังบันทึกข้อมูลของฟอร์มนี้; setSaving ใช้อัปเดตค่านี้
   const [saving, setSaving] = useState<boolean>(false);
+  // savedDraftId: รหัสฉบับร่างที่บันทึกแล้ว ใช้ส่งตรวจและอัปเดตข้อมูลเดิม; setSavedDraftId ใช้อัปเดตค่านี้
   const [savedDraftId, setSavedDraftId] = useState<string | null>(initialData?.draftId ?? null);
+  // savedLessonId: รหัสบทเรียนที่มีอยู่แล้ว ใช้ผูกฉบับร่างและค้นคำถามที่เข้ากับบทเรียน; setSavedLessonId ใช้อัปเดตค่านี้
   const [savedLessonId, setSavedLessonId] = useState<string | null>(initialData?.lessonId ?? null);
+  // error: ข้อผิดพลาดปัจจุบันที่ใช้แจ้งให้ผู้ใช้ทราบในส่วนนี้; setError ใช้อัปเดตค่านี้
   const [error, setError] = useState<string | null>(null);
 
+  // submitting: สถานะกำลังส่งข้อมูลให้เซิร์ฟเวอร์ ใช้ควบคุมปุ่มและข้อความรอ; setSubmitting ใช้อัปเดตค่านี้
   const [submitting, setSubmitting] = useState<boolean>(false);
+  // submitted: สถานะว่าฉบับที่แสดงอยู่ส่งตรวจแล้ว ใช้ควบคุมปุ่มและข้อความบนฟอร์ม; setSubmitted ใช้อัปเดตค่านี้
   const [submitted, setSubmitted] = useState<boolean>(initialData?.status === "pending_review");
+  // submitError: ข้อความผิดพลาดขณะส่งฉบับร่างให้ผู้ดูแลตรวจ; setSubmitError ใช้อัปเดตค่านี้
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // videoRef: อ้างถึงตัวเล่นวิดีโอเพื่ออ่านเวลา ระยะเวลา และเลื่อนไปจุดควิซ
   const videoRef = useRef<HTMLVideoElement>(null);
+  // videoDuration: ความยาววิดีโอที่ตัวเล่นอ่านได้ หน่วยวินาที; setVideoDuration ใช้อัปเดตค่านี้
   const [videoDuration, setVideoDuration] = useState<number>(0);
+  // videoCurrentTime: ตำแหน่งเวลาปัจจุบันของตัวเล่นวิดีโอ หน่วยวินาที; setVideoCurrentTime ใช้อัปเดตค่านี้
   const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
   // ===== แก้: ตัด bankCounts/bankCountsLoading ออก — เดิมใช้เฉพาะแท็บ "สุ่มจากคลัง" ที่ตัดออกไปแล้ว
   // ไม่มีที่ไหนอ่านค่านี้อีกต่อไป =====
   // ===== เพิ่มใหม่: รูปภาพประกอบคำถาม (ไม่บังคับ) — track ว่ากำลังอัปโหลด/error ของคำถามข้อไหนอยู่ =====
   const [uploadingImageKey, setUploadingImageKey] = useState<string | null>(null);
+  // imageUploadErrors: ข้อความอัปโหลดภาพไม่สำเร็จแยกตาม key ของคำถาม; setImageUploadErrors ใช้อัปเดตค่านี้
   const [imageUploadErrors, setImageUploadErrors] = useState<Record<string, string>>({});
   // ===== เพิ่มใหม่: จำชื่อไฟล์/ขนาดไฟล์ไว้โชว์ใต้รูป (เก็บแค่ฝั่ง client ไม่ได้ส่งขึ้น server) =====
   const [imageFileMeta, setImageFileMeta] = useState<Record<string, { name: string; size: number }>>({});
@@ -200,7 +239,9 @@ export default function LessonDraftForm({
     return () => URL.revokeObjectURL(videoPreviewUrl);
   }, [videoPreviewUrl]);
   
+  /** ตรวจการเปลี่ยนวิดีโอ จัดการเนื้อหาที่ผูกเวลาเดิม และอัปโหลดไฟล์ใหม่พร้อมแสดงความคืบหน้า */
   const handleVideoChange = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    // file: ไฟล์ที่ผู้ใช้เลือกจาก input เพื่อนำไปตรวจและอัปโหลด
     const file = e.target.files?.[0];
     if (!file) return;
     if (
@@ -240,11 +281,13 @@ export default function LessonDraftForm({
     }
   };
 
+  /** ล้างสถานะส่งตรวจแล้วเมื่อมีการแก้ไข เพื่อให้บันทึกและส่งฉบับล่าสุดอีกครั้ง */
   // เรียกทุกครั้งที่มีการแก้ไขเนื้อหา เพื่อสลับกลับจากกล่อง "บันทึกแล้ว" มาเป็นปุ่มบันทึกปกติ
   function markDirty(): void {
     setSubmitted(false);
   }
 
+  /** ใช้ setter ของกลุ่มคำถามเพื่อนำคำถามที่มี key ตรงกันออก */
   // ---------- ตัวช่วยจัดการคำถามในวิดีโอ ----------
 
   function removeQuestion(setter: typeof setVideoQuizQuestions, key: string): void {
@@ -252,21 +295,25 @@ export default function LessonDraftForm({
     setter((prev) => prev.filter((q) => q.key !== key));
   }
 
+  /** แก้ข้อความโจทย์ของคำถามที่ระบุในกลุ่ม setter */
   function updateQuestionText(setter: typeof setVideoQuizQuestions, key: string, text: string): void {
     markDirty();
     setter((prev) => prev.map((q) => (q.key === key ? { ...q, questionText: text } : q)));
   }
 
+  /** แก้คำอธิบายเฉลยของคำถามที่ระบุ */
   function updateQuestionExplanation(setter: typeof setVideoQuizQuestions, key: string, text: string): void {
     setter((prev) => prev.map((q) => (q.key === key ? { ...q, explanation: text || null } : q)));
     markDirty();
     setter((prev) => prev.map((q) => (q.key === key ? { ...q, explanation: text || null } : q)));
   }
 
+  /** แก้ข้อความบรรยายภาพประกอบคำถาม */
   function updateQuestionImageCaption(setter: typeof setVideoQuizQuestions, key: string, text: string): void {
     markDirty();
     setter((prev) => prev.map((q) => (q.key === key ? { ...q, imageCaption: text || null } : q)));
   }
+  /** ใช้ fn แปลงจุดบนภาพของคำถามที่ระบุ แล้วเก็บกลับเข้ากลุ่มคำถาม */
   function updateQuestionPins(
     setter: typeof setVideoQuizQuestions,
     key: string,
@@ -276,6 +323,7 @@ export default function LessonDraftForm({
     setter((prev) => prev.map((q) => (q.key === key ? { ...q, imagePins: fn(q.imagePins ?? []) } : q)));
   }
 
+  /** เปลี่ยน URL ภาพคำถามและล้างข้อมูลแสดงผลการอัปโหลดที่เกี่ยวข้อง */
   // ===== เพิ่มใหม่: รูปภาพประกอบคำถาม (ไม่บังคับ) =====
   function updateQuestionImageUrl(setter: typeof setVideoQuizQuestions, key: string, url: string | null): void {
     markDirty();
@@ -285,6 +333,7 @@ export default function LessonDraftForm({
     }
   }
 
+  /** ตรวจภาพ ขอ signed URL แล้วอัปโหลดและผูก URL ภาพกับคำถามในกลุ่ม setter */
   async function handleQuestionImageUpload(setter: typeof setVideoQuizQuestions, key: string, file: File | null): Promise<void> {
     if (!file) return;
     const ALLOWED = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -305,6 +354,7 @@ export default function LessonDraftForm({
         setImageUploadErrors((prev) => ({ ...prev, [key]: data.error ?? "เตรียมการอัปโหลดรูปภาพไม่สำเร็จ" }));
         return;
       }
+      // putRes: ผลคำขอ PUT ที่ส่งไฟล์ไปยัง URL อัปโหลด ใช้ตรวจว่าอัปโหลดสำเร็จหรือไม่
       const putRes = await fetch(data.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
       if (!putRes.ok) {
         setImageUploadErrors((prev) => ({ ...prev, [key]: "อัปโหลดรูปภาพไม่สำเร็จ กรุณาลองใหม่" }));
@@ -319,6 +369,7 @@ export default function LessonDraftForm({
     }
   }
 
+  /** แปลงขนาด bytes เป็นข้อความขนาดไฟล์ที่อ่านง่าย เช่น KB หรือ MB */
   // ===== เพิ่มใหม่: แปลงขนาดไฟล์ (bytes) ให้อ่านง่าย เช่น "1.2 MB" =====
   function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -326,11 +377,13 @@ export default function LessonDraftForm({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
+  /** เปลี่ยนวินาทีที่คำถามปรากฏแทรกระหว่างวิดีโอ */
   function updateQuestionTimestamp(setter: typeof setVideoQuizQuestions, key: string, seconds: number): void {
     markDirty();
     setter((prev) => prev.map((q) => (q.key === key ? { ...q, timestampSeconds: seconds } : q)));
   }
 
+  /** เพิ่มตัวเลือกว่างให้คำถามที่ระบุ */
   function addChoice(setter: typeof setVideoQuizQuestions, key: string): void {
     markDirty();
     setter((prev) =>
@@ -338,6 +391,7 @@ export default function LessonDraftForm({
     );
   }
 
+  /** ลบตัวเลือกตาม choiceIndex ของคำถามที่ระบุ */
   function removeChoice(setter: typeof setVideoQuizQuestions, key: string, choiceIndex: number): void {
     markDirty();
     setter((prev) =>
@@ -345,6 +399,7 @@ export default function LessonDraftForm({
     );
   }
 
+  /** แก้ข้อความตัวเลือกตาม choiceIndex */
   function updateChoiceText(setter: typeof setVideoQuizQuestions, key: string, choiceIndex: number, text: string): void {
     markDirty();
     setter((prev) =>
@@ -356,6 +411,7 @@ export default function LessonDraftForm({
     );
   }
 
+  /** สลับสถานะถูกหรือผิดของตัวเลือก สำหรับคำถามที่เลือกเฉลยได้หลายข้อ */
   // multi_select: ติ๊ก/เอาติ๊กออกทีละตัวเลือก (ถูกได้หลายข้อ)
   function toggleCorrectChoice(setter: typeof setVideoQuizQuestions, key: string, choiceIndex: number): void {
     markDirty();
@@ -368,6 +424,7 @@ export default function LessonDraftForm({
     );
   }
 
+  /** กำหนดเฉลยเดียวตาม choiceIndex และยกเลิกเฉลยของตัวเลือกอื่น */
   function setCorrectChoice(setter: typeof setVideoQuizQuestions, key: string, choiceIndex: number): void {
     markDirty();
     setter((prev) =>
@@ -379,6 +436,7 @@ export default function LessonDraftForm({
     );
   }
 
+  /** แก้ข้อความด้านที่ระบุของคู่จับคู่ตาม index */
   // ===== เพิ่มใหม่: matching (จับคู่) — แก้ answer_data ของคำถามข้อนั้นตรงๆ (shape เดียวกับที่จะ
   // ส่งไป save ทีเดียว ไม่ต้องมี state แยกแล้วค่อยแปลงทีหลังแบบ QuestionBankForm) =====
   function updateMatchingPair(setter: typeof setVideoQuizQuestions, key: string, index: number, field: "left" | "right", value: string): void {
@@ -391,6 +449,7 @@ export default function LessonDraftForm({
       })
     );
   }
+  /** เพิ่มคู่จับคู่ว่างลงใน answerData ของคำถาม */
   function addMatchingPair(setter: typeof setVideoQuizQuestions, key: string): void {
     markDirty();
     setter((prev) =>
@@ -401,6 +460,7 @@ export default function LessonDraftForm({
       })
     );
   }
+  /** ลบคู่จับคู่ตาม index ออกจาก answerData */
   function removeMatchingPair(setter: typeof setVideoQuizQuestions, key: string, index: number): void {
     markDirty();
     setter((prev) =>
@@ -412,6 +472,7 @@ export default function LessonDraftForm({
     );
   }
 
+  /** แก้ข้อความรายการในคำถามเรียงลำดับและเก็บไว้ใน answerData */
   // ===== เพิ่มใหม่: sequencing (เรียงลำดับ) — เก็บ items ตามลำดับที่ถูกต้อง (บนลงล่าง) เหมือน
   // QuestionBankForm/CourseExamEditor id เป็น "item-N" ตามตำแหน่งเสมอ (regenerate ใหม่ทุกครั้งที่
   // เพิ่ม/ลบ/ย้าย กันชนกันหรือขาดหาย) correct_order จึงตรงกับลำดับ items ในอาเรย์เสมอโดยไม่ต้องเก็บซ้ำ
@@ -426,6 +487,7 @@ export default function LessonDraftForm({
       })
     );
   }
+  /** เพิ่มรายการเรียงลำดับพร้อมรหัสรายการและปรับชุดเฉลย */
   function addSequencingItem(setter: typeof setVideoQuizQuestions, key: string): void {
     markDirty();
     setter((prev) =>
@@ -437,6 +499,7 @@ export default function LessonDraftForm({
       })
     );
   }
+  /** ลบรายการเรียงลำดับแล้วจัดรหัสและเฉลยให้ตรงกับรายการที่เหลือ */
   function removeSequencingItem(setter: typeof setVideoQuizQuestions, key: string, index: number): void {
     markDirty();
     setter((prev) =>
@@ -448,6 +511,7 @@ export default function LessonDraftForm({
       })
     );
   }
+  /** ย้ายรายการตาม delta แล้วสร้างรายการและลำดับเฉลยใหม่ */
   function moveSequencingItem(setter: typeof setVideoQuizQuestions, key: string, index: number, delta: number): void {
     markDirty();
     setter((prev) =>
@@ -465,6 +529,7 @@ export default function LessonDraftForm({
       })
     );
   }
+  /** ย้ายข้อความจาก fromIndex ไป toIndex หลังลาก แล้วปรับเฉลยตามลำดับใหม่ */
   // ===== เพิ่มใหม่: ลาก-วาง (native HTML5 drag-and-drop) ย้ายรายการจากตำแหน่งไหนไปไว้ตำแหน่งไหนก็ได้
   // ในคราวเดียว — ต่างจาก moveSequencingItem (สลับกับเพื่อนบ้านทีละสเตป ใช้กับปุ่ม ↑↓) ตรงนี้ลาก
   // ข้ามหลายตำแหน่งได้เลย (splice ออกจากที่เดิม แล้ว insert ตำแหน่งใหม่ เหมือน SortableJS)
@@ -484,6 +549,7 @@ export default function LessonDraftForm({
     );
   }
 
+    /** อ่านเวลาวิดีโอปัจจุบันแล้วเปิดหน้าต่างเลือกวิธีเพิ่มควิซ ณ เวลานั้น */
   // ---------- Video preview + timeline markers ----------
 
   // function handleAddQuizAtCurrentTime(): void {
@@ -501,6 +567,7 @@ export default function LessonDraftForm({
     setPinModalOpen(true);
   }
 
+  /** อ่านคำถามจากคลังที่ใช้กับบทเรียนนี้ได้เพื่อให้เลือกในหน้าต่างเพิ่มควิซ */
   async function loadBankQuestionsForLesson(): Promise<void> {
     setBankLoading(true);
     try {
@@ -516,6 +583,7 @@ export default function LessonDraftForm({
     }
   }
 
+  /** เพิ่มควิซเขียนเอง ควิซจากคลัง หรือจุดสุ่ม ตามโหมดและเวลาที่เลือกในหน้าต่าง */
   function confirmPinModal(): void {
     markDirty();
     if (pinModalMode === "custom") {
@@ -552,17 +620,20 @@ export default function LessonDraftForm({
     setPinModalOpen(false);
   }
 
+  /** นำเวลาวิดีโอปัจจุบันไปใส่ timestamp ของคำถามที่มี key ตรงกัน */
   function handleFetchCurrentTime(key: string): void {
     const seconds = videoRef.current ? Math.floor(videoRef.current.currentTime) : 0;
     updateQuestionTimestamp(setVideoQuizQuestions, key, seconds);
   }
 
+  /** เลื่อนวิดีโอไปวินาที seconds เพื่อดูตำแหน่งที่จะแทรกควิซ */
   function handleSeekToMarker(seconds: number): void {
     if (videoRef.current) {
       videoRef.current.currentTime = seconds;
     }
   }
 
+    // sortedVideoQuizzes: สำเนาควิซวิดีโอที่เรียงตามเวลาเพื่อแสดงรายการโดยไม่แก้ลำดับ state เดิม
   // const sortedVideoQuizzes = useMemo(
   //   () => [...videoQuizQuestions].sort((a, b) => (a.timestampSeconds ?? 0) - (b.timestampSeconds ?? 0)),
   //   [videoQuizQuestions]
@@ -571,11 +642,13 @@ export default function LessonDraftForm({
     () => [...videoQuizQuestions].sort((a, b) => (a.timestampSeconds ?? 0) - (b.timestampSeconds ?? 0)),
     [videoQuizQuestions]
   );
+  // sortedRandomMarkers: สำเนาจุดสุ่มที่เรียงตามเวลาบนวิดีโอ
   const sortedRandomMarkers = useMemo(
     () => [...randomMarkers].sort((a, b) => a.timestampSeconds - b.timestampSeconds),
     [randomMarkers]
   );
 
+  /** ตรวจเนื้อหาและคำตอบ จัด payload พร้อมรหัสข้อเดิม แล้วสร้างหรืออัปเดตฉบับร่างบทเรียน */
   // ---------- Save / submit ----------
 
   const saveCurrentDraft = async (): Promise<{ draftId?: string; lessonId?: string; error?: string }> => {
@@ -594,6 +667,7 @@ export default function LessonDraftForm({
 
     // กันเลือกข้อสอบจากคลังซ้ำ: ข้อเดียวกันห้ามอยู่ในควิซของบทเรียนนี้เกิน 1 หมุด
     {
+      // seenBankIds: เก็บรหัสคำถามจากคลังที่พบแล้ว เพื่อตรวจไม่ให้ใช้ข้อเดิมซ้ำในบทเรียน
       const seenBankIds = new Set<string>();
       for (const q of videoQuizQuestions) {
         const sourceId = q.sourceType === "bank_manual" ? q.sourceQuestionId : null;
@@ -689,6 +763,7 @@ export default function LessonDraftForm({
       }
     }
 
+    // allQuestions: ข้อมูลคำถามที่เตรียมส่งบันทึก รวมรหัสข้อเดิมเพื่อรักษาความเชื่อมโยงกับคำตอบผู้เรียน
     const allQuestions = videoQuizQuestions.map(
       (question) => {
         // ★ questionId: ส่ง id ของข้อเดิมกลับไปด้วย เพื่อให้เซิร์ฟเวอร์อัปเดตทับข้อเดิม แทนการลบทิ้ง
@@ -718,12 +793,14 @@ export default function LessonDraftForm({
       }
     );
 
+    // allRandomMarkers: จุดสุ่มที่ตัด key เฉพาะหน้าจอออกแล้ว เพื่อส่งบันทึก
     const allRandomMarkers = randomMarkers.map(({ markerId, timestampSeconds, difficulty }) => ({
       markerId,
       timestampSeconds,
       difficulty,
     }));
 
+    // allVideoSegments: ช่วงวิดีโอที่จัดค่าเริ่มต้นของข้อมูลเสริมแล้ว เพื่อส่งบันทึก
     const allVideoSegments = videoSegments.map(({ title, summary, start, end, source, confidence }) => ({
       title,
       summary: summary ?? null,
@@ -764,6 +841,7 @@ export default function LessonDraftForm({
         });
    };
 
+  /** สั่งบันทึกฉบับร่างและอัปเดตรหัสบทเรียนหรือข้อความผิดพลาดบนฟอร์ม */
   const handleSaveDraft = async (): Promise<void> => {
     setError(null);
     setSubmitError(null);
@@ -781,6 +859,7 @@ export default function LessonDraftForm({
     setSavedLessonId(result.lessonId ?? savedLessonId);
   };
 
+  /** บันทึกข้อมูลล่าสุดก่อน แล้วส่งรหัสฉบับร่างที่บันทึกสำเร็จให้ผู้ดูแลตรวจ */
   const handleSubmitForReview = async (): Promise<void> => {
     setSubmitting(true);
     setSubmitError(null);
@@ -789,6 +868,7 @@ export default function LessonDraftForm({
     // บันทึกค่าล่าสุดก่อนส่งทุกครั้ง ป้องกันคำถามที่เพิ่งแก้หายไปจาก draft
     const savedResult = await saveCurrentDraft();
     if (savedResult.error || !savedResult.draftId || !savedResult.lessonId) {
+      // message: ข้อความผลลัพธ์ที่ใช้แสดงให้ผู้ใช้ทราบตามบริบทของส่วนนี้
       const message = savedResult.error ?? "บันทึกฉบับร่างล่าสุดไม่สำเร็จ";
       setError(message);
       setSubmitError(message);
@@ -819,6 +899,7 @@ export default function LessonDraftForm({
     setSubmitted(true);
   };
 
+  // tabs: รายการแท็บและชื่อที่ใช้สลับเนื้อหาในส่วนนี้
   // ---------- Tabs ----------
 
   const tabs: { key: TabKey; label: string; badge?: number }[] = [
@@ -1690,9 +1771,11 @@ export default function LessonDraftForm({
             const usedBankIds = new Set(
               videoQuizQuestions.filter((vq) => vq.sourceType === "bank_manual" && vq.sourceQuestionId).map((vq) => vq.sourceQuestionId as string)
             );
+            // availableBankOptions: คำถามจากคลังที่ยังไม่ถูกใช้ในบทเรียนนี้
             const availableBankOptions = bankOptions.filter((q) => !usedBankIds.has(q.id));
             const counts = { easy: 0, medium: 0, hard: 0 };
             for (const q of availableBankOptions) counts[q.difficulty] += 1;
+            // filteredBankOptions: คำถามจากคลังที่เหลือหลังกรองระดับความยากในหน้าต่างเลือก
             const filteredBankOptions =
               bankDifficultyFilter === "all" ? availableBankOptions : availableBankOptions.filter((q) => q.difficulty === bankDifficultyFilter);
             const picked = bankOptions.find((q) => q.id === selectedBankQuestionId) ?? null;

@@ -4,6 +4,7 @@ import { getCourseFinalExam, gradeCourseFinalExam } from "@/lib/courses/course-f
 import type { FinalQuizAnswer } from "@/lib/scorm/grade-final-quiz";
 import { createClient } from "@/utils/supabase/server";
 
+// ศึกษา 3.2.2.14: CourseFinalExam ขอ GET ชุดคำถามจาก Server; getCourseFinalExam ของเราตรวจสิทธิ์ก่อนคืน JSON ที่ไม่รวมเฉลย
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ courseId: string }> }) {
   const { courseId } = await params;
   const supabase = await createClient();
@@ -17,6 +18,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   }
 }
 
+// ผู้เรียนส่ง POST {answers}; Route อ่าน user จาก Auth แล้วให้ gradeCourseFinalExam ตรวจ/บันทึกคะแนนฝั่ง Server
+// สอบผ่านจึงลอง ensureCertificateForCourse; ถ้าสร้างใบรับรองพลาดยังคืนผลสอบพร้อมข้อความ และส่ง review เฉพาะ passed
 export async function POST(request: NextRequest, { params }: { params: Promise<{ courseId: string }> }) {
   const { courseId } = await params;
   const supabase = await createClient();

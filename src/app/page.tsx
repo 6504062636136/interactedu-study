@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: หน้าแรก แนะนำแพลตฟอร์ม คอร์สที่เผยแพร่ เส้นทางอาชีพ และแพ็กเกจ Plus
+ * เส้นทาง: /
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import { hasStartedLearning, loadLearningEnrollments, type LearningEnrollment } from "@/lib/courses/learning-enrollment";
 import { loadSavedCourseEnrollments } from "@/lib/courses/course-library";
 import CourseAccessActions from "@/components/courses/CourseAccessActions";
@@ -41,6 +46,7 @@ const tagColors: Record<string, string> = {
   Marketing: "bg-[#FFCB47] text-[#0F1B3D]",
 };
 
+/** รวมความยาววิดีโอของบทเรียนในคอร์สเป็นวินาที โดยถือว่าค่าที่ไม่มีเป็นศูนย์ */
 // [แก้บั๊ก: ความยาวคอร์สค้าง 0] รวมความยาวคอร์สจาก video_duration_seconds ของบทเรียนจริงๆ แบบสด
 // แทนการอ่าน courses.total_duration_seconds ที่ไม่เคยถูกอัปเดต — บทเรียนเก่าที่ video_duration_seconds
 // ยังเป็น null/0 อยู่ (เพราะยังไม่เคยถูก save/approve ใหม่หลังแก้จุดบันทึกค่า) จะถูกนับเป็น 0 ไปก่อน
@@ -49,10 +55,15 @@ function courseTotalDurationSeconds(lessons: { video_duration_seconds: number | 
   return lessons.reduce((sum, l) => sum + (l.video_duration_seconds ?? 0), 0);
 }
 
+/** แปลงจำนวนวินาทีเป็นข้อความชั่วโมง นาที และวินาทีสำหรับแสดงความยาวคอร์ส */
 function formatDuration(seconds: number): string {
+  // totalSeconds: จำนวนวินาทีที่ปัดเป็นจำนวนเต็มก่อนแยกเป็นหน่วยเวลา
   const totalSeconds = Math.round(seconds);
+  // hours: จำนวนชั่วโมงเต็มของช่วงเวลาที่กำลังจัดรูปแบบ
   const hours = Math.floor(totalSeconds / 3600);
+  // minutes: จำนวนนาทีที่ใช้ประกอบข้อความเวลาของฟังก์ชันนี้
   const minutes = Math.floor((totalSeconds % 3600) / 60);
+  // secs: จำนวนวินาทีที่เหลือหลังแยกชั่วโมงและนาที
   const secs = totalSeconds % 60;
 
   if (hours > 0) {
@@ -64,10 +75,12 @@ function formatDuration(seconds: number): string {
   return `${secs} วินาที`;
 }
 
+/** จัดรูปแบบราคาสำหรับแสดงเป็นเงินบาทตามรูปแบบภาษาไทย */
 function formatPrice(price: number): string {
   return `฿${price.toLocaleString("th-TH")}`;
 }
 
+/** วาดไอคอนดาว โดยรับ size เป็นขนาดและ color เป็นสีของดาว */
 function StarIcon({ size = 12, color = "#FFCB47" }: { size?: number; color?: string }): ReactElement {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -79,8 +92,10 @@ function StarIcon({ size = 12, color = "#FFCB47" }: { size?: number; color?: str
   );
 }
 
+/** แสดงคะแนนเฉลี่ยและจำนวนรีวิว หรือข้อความเมื่อคอร์สยังไม่มีรีวิว */
 // แถวคะแนนรีวิว ใช้ในการ์ดคอร์สหน้าแรก — ไม่มีรีวิวก็โชว์ 0.0 พร้อมดาวจาง ๆ
 function RatingChip({ avgRating, reviewCount }: { avgRating: number; reviewCount: number }): ReactElement {
+  // hasReviews: ระบุว่ามีรีวิวให้แสดงคะแนนเฉลี่ยแล้วหรือไม่
   const hasReviews = reviewCount > 0;
   return (
     <div className="mb-3 flex items-center gap-1.5">
@@ -93,6 +108,7 @@ function RatingChip({ avgRating, reviewCount }: { avgRating: number; reviewCount
   );
 }
 
+// navLinks: รายการชื่อเมนูและเส้นทางลิงก์สำหรับแถบนำทาง
 const navLinks: { label: string; href: string }[] = [
   { label: "คอร์สทั้งหมด", href: "/courses" },
   { label: "Interact Edu Plus", href: "/membership" },
@@ -100,6 +116,7 @@ const navLinks: { label: string; href: string }[] = [
   { label: "คอร์สฟรี", href: "/courses?price=free" },
 ];
 
+// marqueeTags: หัวข้อทักษะที่นำไปแสดงบนแถบเลื่อน
 const marqueeTags: string[] = [
   "WEB DEVELOPMENT",
   "UI/UX DESIGN",
@@ -112,6 +129,7 @@ const marqueeTags: string[] = [
 // สลับสีจุดคั่นระหว่างคำ ให้แถบดูมีสีสันขึ้นกว่าเดิม (เดิมใช้สีส้มอย่างเดียวทั้งแถบ)
 const marqueeDotColors = ["#FF5A3C", "#FFCB47", "#3157D5"];
 
+// avatarStack: ข้อมูลรูปแทนผู้ใช้ตัวอย่างที่ซ้อนกันในส่วนแนะนำ
 const avatarStack: { initial: string; bg: string }[] = [
   { initial: "A", bg: "#FF5A3C" },
   { initial: "K", bg: "#3157D5" },
@@ -119,6 +137,7 @@ const avatarStack: { initial: string; bg: string }[] = [
   { initial: "P", bg: "#0F1B3D" },
 ];
 
+/** แสดงแถบนำทางหลักและข้อมูลโปรไฟล์ โดยรับชื่อ รูป และวันหมดอายุ Plus มาแสดง */
 function Navbar({ displayName, avatarUrl, plusExpiresAt }: { displayName: string | null; avatarUrl: string | null; plusExpiresAt: string | null }): ReactElement {
   return (
     <header className="app-topbar sticky top-0 z-50">
@@ -165,9 +184,11 @@ function Navbar({ displayName, avatarUrl, plusExpiresAt }: { displayName: string
   );
 }
 
+/** แสดงแถบหัวข้อที่เลื่อนต่อเนื่อง โดยทำรายการซ้ำเพื่อให้รอยต่อของแอนิเมชันต่อกัน */
 // แถบหมวดหมู่เลื่อนอัตโนมัติ — กลับมาใช้แบบเดิม (เอียงเล็กน้อย พื้นหลังเข้ม เลื่อนวนไม่หยุด)
 // เพิ่มสีสันขึ้นจากเดิม: พื้นหลังไล่เฉด + จุดคั่นสลับสีแบรนด์แทนสีส้มสีเดียวทั้งแถบ
 function Marquee(): ReactElement {
+  // doubled: รายการหัวข้อสองชุดต่อกัน เพื่อให้แถบเลื่อนวนได้ต่อเนื่อง
   const doubled = [...marqueeTags, ...marqueeTags];
   return (
     <div className="relative -rotate-1 bg-gradient-to-r from-[#0F1B3D] via-[#1c2c5c] to-[#0F1B3D] py-3.5 overflow-hidden shadow-[0_10px_30px_-10px_rgba(15,27,61,0.5)] my-[-6px] z-10">
@@ -192,6 +213,7 @@ function Marquee(): ReactElement {
   );
 }
 
+/** แสดงการ์ดตัวอย่างห้องเรียนในส่วนแนะนำหน้าแรก */
 function HeroPreviewCard(): ReactElement {
   return (
     <div className="relative rounded-2xl bg-[#0F1B3D] p-6 shadow-[0_24px_48px_-24px_rgba(15,27,61,0.45)]">
@@ -249,6 +271,7 @@ function HeroPreviewCard(): ReactElement {
   );
 }
 
+/** แสดงหัวเรื่องหลัก ข้อความแนะนำ และปุ่มเริ่มค้นหาคอร์ส */
 function Hero(): ReactElement {
   return (
     <section className="relative">
@@ -324,6 +347,7 @@ function Hero(): ReactElement {
   );
 }
 
+/** แสดงข้อเสนอ Plus โดยใช้ monthlyPrice และ annualPrice เป็นราคาที่อ่านจากการตั้งค่า */
 function MembershipPromo({ monthlyPrice, annualPrice }: { monthlyPrice: number; annualPrice: number }): ReactElement {
   return (
     <section className="mx-auto w-full max-w-7xl px-4 pt-8 sm:px-6 lg:px-8">
@@ -378,6 +402,7 @@ interface PathCourse {
 
 type PathVisual = { icon: LucideIcon; accent: string; surface: string };
 
+// pathVisuals: ชุดคำค้น ไอคอน และสีที่ใช้จำแนกหน้าตาของเส้นทางอาชีพ
 const pathVisuals: Array<PathVisual & { keywords: string[] }> = [
   { keywords: ["วิทยาการข้อมูล", "ปัญญาประดิษฐ์", "machine learning", "data", " ai ", "analytics"], icon: BrainCircuit, accent: "#52319F", surface: "#D9CAFA" },
   { keywords: ["เขียนโปรแกรม", "ซอฟต์แวร์", "development", "programming", "software", "react", "mobile app", "web"], icon: Code2, accent: "#244DAA", surface: "#CDDDFE" },
@@ -390,17 +415,23 @@ const pathVisuals: Array<PathVisual & { keywords: string[] }> = [
   { keywords: ["ธุรกิจ", "บริหาร", "business", "management"], icon: BriefcaseBusiness, accent: "#15546D", surface: "#C9E3EC" },
 ];
 
+/** เลือกไอคอนและชุดสีของเส้นทางอาชีพจากหมวดหมู่และชื่อคอร์ส */
 function getPathVisual(course: PathCourse): PathVisual {
+  // category: หมวดหมู่ที่ปรับรูปแบบข้อความเพื่อค้นคำสำคัญหรือเปรียบเทียบว่าซ้ำกันหรือไม่
   const category = ` ${course.category ?? ""} `.toLowerCase();
+  // title: ชื่อคอร์สที่ปรับเป็นตัวพิมพ์เล็กสำหรับค้นคำสำคัญเพื่อเลือกไอคอนเส้นทางอาชีพ
   const title = ` ${course.title} `.toLowerCase();
   return pathVisuals.find(({ keywords }) => keywords.some((keyword) => category.includes(keyword)))
     ?? pathVisuals.find(({ keywords }) => keywords.some((keyword) => title.includes(keyword)))
     ?? { icon: BookOpen, accent: "#244DAA", surface: "#D5E0F2" };
 }
 
+/** เลือกคอร์สตัวแทนหมวดหมู่ละหนึ่งคอร์ส โดยถือว่าหมวดหมู่ที่ไม่ระบุเป็นกลุ่มเดียวกัน */
 function oneCoursePerCategory(courses: PathCourse[]): PathCourse[] {
+  // seen: จำหมวดหมู่ที่เลือกแล้ว เพื่อไม่ให้แสดงคอร์สตัวแทนหมวดหมู่เดิมซ้ำ
   const seen = new Set<string>();
   return courses.filter((course) => {
+    // category: หมวดหมู่ที่ปรับรูปแบบข้อความเพื่อค้นคำสำคัญหรือเปรียบเทียบว่าซ้ำกันหรือไม่
     const category = course.category?.trim().toLocaleLowerCase() || "uncategorized";
     if (seen.has(category)) return false;
     seen.add(category);
@@ -408,6 +439,7 @@ function oneCoursePerCategory(courses: PathCourse[]): PathCourse[] {
   });
 }
 
+/** แสดงการ์ดคอร์สตัวแทนเส้นทางอาชีพพร้อมลิงก์ไปยังรายละเอียด */
 function PathCard({ course }: { course: PathCourse }): ReactElement {
   const { icon: Icon, accent, surface } = getPathVisual(course);
   return (
@@ -444,6 +476,7 @@ interface HowItWorksStep {
   description: string;
 }
 
+// howItWorksSteps: รายละเอียดข้อความ ไอคอน และสีของแต่ละขั้นตอนการใช้งาน
 const howItWorksSteps: HowItWorksStep[] = [
   {
     number: "1",
@@ -471,6 +504,7 @@ const howItWorksSteps: HowItWorksStep[] = [
   },
 ];
 
+/** แสดงขั้นตอนตั้งแต่เลือกคอร์ส เรียน ไปจนถึงรับใบประกาศนียบัตร */
 // วิธีการเรียน — 3 ขั้นตอน วางต่อจาก Hero/Marquee ก่อนเข้า CareerPaths
 // ปุ่ม "ดูวิธีการเรียน" ใน Hero เลื่อนมาที่ id="how-it-works" นี้
 function HowItWorks(): ReactElement {
@@ -534,6 +568,7 @@ function HowItWorks(): ReactElement {
   );
 }
 
+/** แสดงคอร์สตัวแทนแต่ละหมวดหมู่เป็นตัวเลือกเส้นทางอาชีพ */
 // เส้นทางสายอาชีพ — ดึงคอร์สที่เผยแพร่แล้วมาแสดงจริง ลิงก์เข้าคอร์สจริงแต่ละใบ
 function CareerPaths({ courses }: { courses: PathCourse[] }): ReactElement | null {
   if (courses.length === 0) return null;
@@ -558,7 +593,9 @@ function CareerPaths({ courses }: { courses: PathCourse[] }): ReactElement | nul
   );
 }
 
+/** แสดงภาพปก ราคา คะแนนรีวิว และปุ่มเข้าถึงคอร์สตามสิทธิ์ของผู้ใช้ */
 function CourseCard({ course }: { course: Course }): ReactElement {
+  // tagColor: คลาสสีป้ายที่เลือกจากหมวดหมู่ของคอร์ส
   const tagColor = tagColors[course.category ?? ""] ?? "bg-[#0F1B3D] text-white";
   return (
     <div className="group bg-white rounded-3xl border border-[#0F1B3D]/[0.06] shadow-[0_1px_2px_rgba(15,27,61,0.04)] hover:shadow-[0_24px_48px_-20px_rgba(15,27,61,0.24)] hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col">
@@ -604,6 +641,7 @@ function CourseCard({ course }: { course: Course }): ReactElement {
   );
 }
 
+/** แสดงรายการคอร์สแนะนำ พร้อมสถานะเมื่อโหลดข้อมูลไม่สำเร็จหรือยังไม่มีคอร์ส */
 function CourseCatalog({ courses, loadFailed }: { courses: Course[]; loadFailed: boolean }): ReactElement {
   return (
     <section className="mx-auto w-full max-w-7xl px-4 pt-10 pb-20 sm:px-6 lg:px-8 lg:pt-14 lg:pb-28">
@@ -645,7 +683,9 @@ function CourseCatalog({ courses, loadFailed }: { courses: Course[]; loadFailed:
   );
 }
 
+/** บันทึกข้อผิดพลาดของ query พร้อมชื่อแหล่งข้อมูล เพื่อระบุส่วนที่โหลดไม่สำเร็จ */
 function logHomepageQueryError(label: string, error: { message: string }): void {
+  // message: ข้อความข้อผิดพลาดที่เติมชื่อ query ไว้ด้านหน้า เพื่อระบุแหล่งที่โหลดไม่สำเร็จ
   const message = `${label}: ${error.message}`;
   if (/timed out|fetch failed/i.test(error.message)) {
     console.warn(message);
@@ -654,6 +694,7 @@ function logHomepageQueryError(label: string, error: { message: string }): void 
   }
 }
 
+/** แสดงแถบชวนสมัครบัญชีและเริ่มเรียนท้ายหน้าแรก */
 function CtaBanner(): ReactElement {
   return (
     <section className="mx-auto w-full max-w-7xl px-4 pb-20 sm:px-6 lg:px-8 lg:pb-28">
@@ -693,6 +734,7 @@ function CtaBanner(): ReactElement {
   );
 }
 
+/** แสดงส่วนท้ายของหน้าพร้อมลิงก์ข้อมูลและนโยบายของเว็บไซต์ */
 function Footer(): ReactElement {
   return (
     <footer className="border-t border-[#0F1B3D]/[0.06] bg-white">
@@ -729,9 +771,12 @@ function Footer(): ReactElement {
   );
 }
 
+/** โหลดข้อมูลผู้ใช้ คอร์ส รีวิว และข้อเสนอ Plus แล้วประกอบส่วนต่าง ๆ ของหน้าแรก */
 export default async function Page(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -739,6 +784,7 @@ export default async function Page(): Promise<ReactElement> {
   // ถ้า login แล้วเป็นครู/แอดมิน ให้เด้งไปหน้าของตัวเองแทน ไม่โชว์หน้านี้
   let avatarUrl: string | null = null;
   if (user) {
+    // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
     const { data: profile } = await supabase.from("profiles").select("role, avatar_url").eq("id", user.id).maybeSingle();
     avatarUrl = profile?.avatar_url ?? null;
 
@@ -746,11 +792,14 @@ export default async function Page(): Promise<ReactElement> {
     if (profile?.role === "admin") redirect("/dashboard/admin");
   }
 
+  // displayName: ชื่อที่ใช้แสดง โดยเลือกจากโปรไฟล์หรือข้อมูลบัญชีและมีชื่อสำรองเมื่อไม่มีข้อมูล
   const displayName = user
     ? (user.user_metadata?.full_name as string | undefined) ?? user.email?.split("@")[0] ?? "ผู้ใช้"
     : null;
+  // plusExpiresAt: วันหมดอายุ Plus ที่มีผลใช้งานของผู้ใช้ หรือ null เมื่อไม่มีสมาชิกที่ใช้งานอยู่
   const plusExpiresAt = user ? await getActivePlusExpiry(supabase, user.id) : null;
 
+  // courseQuery: คำสั่งอ่านคอร์สที่เผยแพร่สำหรับส่วนคอร์สแนะนำ
   const courseQuery = supabase
     .from("courses")
     .select(`
@@ -760,18 +809,21 @@ export default async function Page(): Promise<ReactElement> {
     .eq("status", "published")
     .order("created_at", { ascending: false })
     .limit(4);
+  // pathCoursesQuery: คำสั่งอ่านคอร์สที่เผยแพร่สำหรับเลือกตัวแทนเส้นทางอาชีพ
   const pathCoursesQuery = supabase
     .from("courses")
     .select("id, title, slug, category, description")
     .eq("status", "published")
     .order("created_at", { ascending: false })
     .limit(48);
+  // membershipOfferQuery: คำสั่งอ่านราคาและสถานะเปิดขายแพ็กเกจ Plus
   const membershipOfferQuery = supabase
     .from("membership_settings")
     .select("monthly_price, annual_price, enabled")
     .eq("id", true)
     .maybeSingle();
 
+  // courses, error, pathCoursesData, pathCoursesError, membershipOffer, membershipOfferError: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [
     { data: courses, error },
     { data: pathCoursesData, error: pathCoursesError },
@@ -791,9 +843,11 @@ export default async function Page(): Promise<ReactElement> {
   // ดึงคะแนนรีวิวของคอร์สที่โชว์ในหน้านี้ แล้วคำนวณเฉลี่ย/นับจำนวนเอง
   // (course_reviews อ่านสาธารณะได้สำหรับคอร์สที่เผยแพร่แล้วอยู่แล้วตาม RLS)
   const courseIds = (courses ?? []).map((c) => c.id);
+  // ratingByCourse: เก็บผลรวมคะแนนและจำนวนรีวิวโดยใช้รหัสคอร์สเป็นกุญแจ เพื่อหาคะแนนเฉลี่ย
   const ratingByCourse = new Map<string, { sum: number; count: number }>();
 
   if (courseIds.length > 0) {
+    // reviewRows, reviewsError: ผลอ่านข้อมูลรีวิวคอร์ส พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
     const { data: reviewRows, error: reviewsError } = await supabase
       .from("course_reviews")
       .select("course_id, rating")
@@ -814,11 +868,16 @@ export default async function Page(): Promise<ReactElement> {
   // เช็คว่าคอร์สไหนที่ user คนนี้ลงทะเบียนอนุมัติแล้วบ้าง เอาไว้สลับปุ่ม "ลงทะเบียน" เป็น
   // "เข้าเรียนต่อ" ในการ์ดคอร์ส — ไม่ต้องล็อกอินก็ยังดูรายการคอร์สได้ตามปกติ แค่ enrolledCourseIds ว่าง
   const startedCourseIds = new Set<string>();
+  // accessibleCourseIds: รหัสคอร์สที่มีสิทธิ์เข้าเรียนในขณะนี้ แม้บางคอร์สยังไม่ได้เก็บเข้าคลัง
   const accessibleCourseIds = new Set<string>();
+  // membershipCourseIds: รหัสคอร์สที่สิทธิ์เข้าเรียนผูกกับคำสั่งซื้อสมาชิก Plus
   const membershipCourseIds = new Set<string>();
+  // savedCourseIds: รหัสคอร์สที่ผู้ใช้บันทึกเข้าคลังแล้ว
   const savedCourseIds = new Set<string>();
+  // savingAvailable: ระบุว่าระบบคลังคอร์สรองรับการบันทึกคอร์สในฐานข้อมูลชุดนี้หรือไม่
   let savingAvailable = false;
   if (user && courseIds.length > 0) {
+    // enrollmentRows: ผลอ่านข้อมูลการลงทะเบียน
     const { data: enrollmentRows } = await loadLearningEnrollments((includeStart) => supabase
       .from("enrollments")
       .select(`id, course_id, membership_order_id, ${includeStart ? "learning_started_at, " : ""}scorm_tracking(lesson_id, last_accessed, video_completed, lesson_status, completed_scos, cmi_data), student_study_time(total_seconds)`)
@@ -826,6 +885,7 @@ export default async function Page(): Promise<ReactElement> {
       .eq("status", "approved")
       .or(`access_expires_at.is.null,access_expires_at.gt.${new Date().toISOString()}`)
       .in("course_id", courseIds));
+    // library: ผลโหลดคลังคอร์สที่บันทึกไว้ ใช้แยกการเก็บคอร์สออกจากสิทธิ์ที่ได้ด้วยสมาชิก
     const library = await loadSavedCourseEnrollments(supabase, user.id);
     savingAvailable = library.ready;
     for (const row of (enrollmentRows ?? []) as unknown as (LearningEnrollment & { id: string; course_id: string })[]) {
@@ -836,6 +896,7 @@ export default async function Page(): Promise<ReactElement> {
     }
   }
 
+  // coursesWithRatings: ข้อมูลการ์ดคอร์สที่รวมคะแนนรีวิวและสถานะสิทธิ์เข้าเรียนแล้ว
   const coursesWithRatings: Course[] = (courses ?? []).map((c) => {
     const stats = ratingByCourse.get(c.id);
     return {

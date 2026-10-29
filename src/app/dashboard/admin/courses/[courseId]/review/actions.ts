@@ -19,6 +19,8 @@ async function requireAdmin() {
   return { supabase, user, error: null };
 }
 
+// ศึกษา 3.2.2.11: CourseApproveActions/PublishCourseButton ส่ง courses.id มา Server Action ของเรา คืน {} หรือ {error}
+// requireAdmin + readiness + exam_status → อนุมัติ draft/สร้าง SCORM → courses.published → แจ้งผู้สร้างคอร์ส
 export async function approveCourse(courseId: string): Promise<{ error?: string }> {
   const { supabase, user, error: authError } = await requireAdmin();
   if (authError) return { error: authError };
@@ -57,6 +59,7 @@ export async function approveCourse(courseId: string): Promise<{ error?: string 
     .select("exam_status")
     .eq("id", courseId)
     .maybeSingle();
+  // !== ต้องไม่เท่ากัน; คอร์สของผู้สอนต้องผ่านตรวจ Final Exam ก่อน ส่วนคอร์สที่ admin สร้างเองใช้ isOwnCourse แยกเงื่อนไข
   if (!isOwnCourse && examStatusRow?.exam_status !== "approved") {
     return { error: "บททดสอบท้ายคอร์สยังไม่ได้รับการอนุมัติ ไม่สามารถอนุมัติทั้งคอร์สได้" };
   }
@@ -101,6 +104,7 @@ for (const lesson of lessons) {
   // }
 
     // เช็คว่า draft.status === "approved" ถึงจะยอมสร้างแพ็กเกจ (เหมือน approveLesson)
+  // draftIds เป็น lesson_drafts.id ที่จะอนุมัติรอบนี้; เมื่อ generate ล้มเหลว โค้ดคืนสถานะเฉพาะ draft ชุดนี้ ไม่ใช่ transaction ย้อน Storage ทั้งหมด
   const draftIds = pendingDrafts.map((d) => d.draftId);
   const { data: updatedDrafts, error: draftUpdateError } = draftIds.length ? await supabase
     .from("lesson_drafts")
@@ -163,6 +167,7 @@ for (const lesson of lessons) {
   return {};
 }
 
+// Admin ส่ง courseId/reason มาปฏิเสธผ่าน Action; อ่านบทเรียนแล้วปรับสถานะที่เกี่ยวข้องและแจ้งผู้สอน ไม่ใช่การลบคอร์ส
 export async function rejectCourse(courseId: string, reason: string): Promise<{ error?: string }> {
   const { supabase, user, error: authError } = await requireAdmin();
   if (authError) return { error: authError };

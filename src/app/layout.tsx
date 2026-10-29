@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: เลย์เอาต์หลักของทุกหน้า กำหนดภาษา ฟอนต์ metadata และองค์ประกอบส่วนกลาง
+ * เส้นทาง: / (ครอบหน้าลูกในเส้นทางนี้)
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { Metadata } from "next";
 import "@fontsource/noto-sans-thai/400.css";
 import "@fontsource/noto-sans-thai/500.css";
@@ -5,6 +10,7 @@ import "@fontsource/noto-sans-thai/600.css";
 import "@fontsource/noto-sans-thai/700.css";
 import "./globals.css";
 
+// metadata: ชื่อและคำอธิบายหน้าที่ Next.js ใช้สร้างข้อมูลในส่วน head ของเอกสาร
 export const metadata: Metadata = {
   title: {
     default: "Interact Edu",
@@ -13,6 +19,7 @@ export const metadata: Metadata = {
   description: "แพลตฟอร์มการเรียนรู้ออนไลน์สำหรับผู้เรียน ผู้สอน และสถาบันการศึกษา",
 };
 
+/** ครอบ children ซึ่งเป็นหน้าหรือเลย์เอาต์ย่อยด้วยโครงสร้าง HTML หลักของเว็บไซต์ */
 export default function RootLayout({
   children,
 }: Readonly<{

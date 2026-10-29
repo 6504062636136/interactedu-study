@@ -1,8 +1,14 @@
+/**
+ * หน้าที่ของไฟล์: แสดงการตั้งค่าบัญชีและส่วนเปลี่ยนรหัสผ่านของแอดมิน
+ * เส้นทาง: /dashboard/admin/settings
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import Link from "next/link";
 import { LockKeyhole } from "lucide-react";
 import type { ReactElement } from "react";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
 
+/** แสดงการตั้งค่าบัญชีและส่วนเปลี่ยนรหัสผ่านของแอดมิน */
 export default function AdminSettingsPage(): ReactElement {
   return (
     <div className="mx-auto max-w-3xl">

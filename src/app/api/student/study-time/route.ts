@@ -2,6 +2,8 @@ import { createClient } from "@/utils/supabase/server";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// ศึกษา 3.2.2.16: Player ส่ง {courseId,lessonId,active}; Route ฝั่ง Server ตรวจ UUID/boolean/Auth แล้วเรียก RPC record_student_study_time
+// ฐานข้อมูลตรวจสิทธิ์และคำนวณเวลาจากนาฬิกา Server เก็บ student_study_time.total_seconds ต่อ enrollment; คืน totalSeconds หรือ HTTP error
 export async function POST(request: Request): Promise<Response> {
   let body: unknown;
   try {

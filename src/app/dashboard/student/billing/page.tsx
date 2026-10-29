@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงประวัติลงทะเบียนและการชำระเงินแพ็กเกจของผู้เรียน
+ * เส้นทาง: /dashboard/student/billing
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
@@ -28,6 +33,7 @@ interface MembershipBillingRow {
   duration_months: number;
 }
 
+/** แปลงวันเวลาของรายการเป็นข้อความวันที่และเวลาสำหรับประวัติการชำระเงิน */
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("th-TH", {
     year: "numeric",
@@ -38,26 +44,32 @@ function formatDateTime(iso: string): string {
   });
 }
 
+/** แปลงสถานะการลงทะเบียนเป็นข้อความและคลาสสีของป้ายสถานะ */
 function statusBadge(status: string): { label: string; className: string } {
   if (status === "approved") return { label: "ชำระเงินแล้ว", className: "bg-[#00B37E] text-white" };
   if (status === "pending") return { label: "รอการชำระเงิน", className: "bg-[#FFCB47] text-[#0F1B3D]" };
   return { label: "ถูกปฏิเสธ", className: "bg-[#0F1B3D]/10 text-[#0F1B3D]/60" };
 }
 
+/** เลือกข้อความวิธีชำระเงินจากราคาคอร์สและข้อมูลอ้างอิงการชำระ */
 function paymentMethodLabel(price: number, chargeRef: string | null): string {
   if (price === 0) return "ฟรี";
   if (chargeRef) return "ชำระด้วย PromptPay (QR Code)";
   return "ยังไม่ระบุวิธีชำระเงิน";
 }
 
+/** โหลดรายการลงทะเบียนและคำสั่งซื้อ Plus ของผู้ใช้ แล้วแสดงสถานะการชำระเงิน */
 export default async function BillingPage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login?redirect=/dashboard/student/billing");
 
+  // courseResult, membershipData, membershipError: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [courseResult, { data: membershipData, error: membershipError }] = await Promise.all([
     supabase
       .from("enrollments")
@@ -71,17 +83,22 @@ export default async function BillingPage(): Promise<ReactElement> {
       .eq("student_id", user.id)
       .order("created_at", { ascending: false }),
   ]);
+  // data, courseError: ผลอ่านข้อมูลการลงทะเบียน พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   // Existing course purchases remain readable before the membership migration.
   const { data, error: courseError } = isMissingMembershipSchema(courseResult.error)
     ? await supabase.from("enrollments")
       .select("id, status, payment_slip_url, created_at, approved_at, courses(title, cover_image_url, price)")
       .eq("student_id", user.id).order("created_at", { ascending: false })
     : courseResult;
+  // loadError: ข้อความหรือสถานะผิดพลาดขณะอ่านข้อมูลสำหรับแสดงบนหน้า
   const loadError = Boolean(courseError || membershipError);
   if (loadError) console.error("[billing] Failed to load orders", courseError?.message, membershipError?.message);
 
+  // orders: รายการลงทะเบียนคอร์สที่ใช้สร้างประวัติคำสั่งซื้อ
   const orders = (data ?? []) as unknown as BillingRow[];
+  // membershipOrders: รายการคำสั่งซื้อแพ็กเกจ Plus ของผู้เรียน
   const membershipOrders = (membershipData ?? []) as MembershipBillingRow[];
+  // totalOrders: จำนวนรายการคอร์สและคำสั่งซื้อ Plus รวมกัน
   const totalOrders = orders.length + membershipOrders.length;
 
   return (
@@ -121,6 +138,7 @@ export default async function BillingPage(): Promise<ReactElement> {
           })}
           {orders.map((order) => {
             const badge = statusBadge(order.status);
+            // orderCode: รหัสย่อจากรหัสรายการ ใช้ช่วยอ้างอิงคำสั่งซื้อบนหน้าจอ
             const orderCode = order.id.slice(0, 8).toUpperCase();
             return (
               <div key={order.id} className="rounded-2xl border border-[#0F1B3D]/[0.06] overflow-hidden">

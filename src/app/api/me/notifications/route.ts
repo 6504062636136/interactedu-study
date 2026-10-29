@@ -21,6 +21,8 @@ interface LegacyNotificationRow {
   created_at: string;
 }
 
+// ศึกษา 3.2.2.18: NotificationList/Bell ส่ง GET limit/before; Route ฝั่ง Server คืนรายการ/unread_count/next_cursor
+// query notifications.user_id=user.id เสมอ; before เป็นเวลาแบ่งหน้า ไม่ใช่ userId ที่ Browser เลือกอ่านของคนอื่นได้
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const {

@@ -4,6 +4,8 @@ import { approveEnrollmentForCharge } from "@/lib/payments/approve-charge";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 
+// ศึกษา 3.2.2.4: Browser ส่ง GET ?chargeId; API ตรวจรายการเป็นของ user.id ก่อนถามสถานะจาก Omise
+// successful จึงเรียก helper อนุมัติคอร์ส/สมาชิก; ไม่พบรายการคืน 404, อ่านหรืออนุมัติผิดพลาดคืน 500
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const supabase = await createClient();
   const {
@@ -53,6 +55,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Failed to fetch charge" }, { status: 500 });
   }
 
+  // เงื่อนไขนี้ใช้สถานะที่อ่านจาก Omise; โค้ดช่วงนี้ยังไม่เปรียบเทียบ charge.amount/currency กับรายการในฐานข้อมูล
   if (charge.status === "successful") {
     if (enrollment) {
       try {

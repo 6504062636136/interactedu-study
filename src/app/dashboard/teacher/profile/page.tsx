@@ -1,3 +1,9 @@
+/**
+ * หน้าที่ของไฟล์: แสดงและแก้ไขโปรไฟล์ผู้สอน รวมรูป ประวัติ และข้อมูลติดต่อ
+ * เส้นทาง: /dashboard/teacher/profile
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน ส่วน useRef เก็บค่าอ้างอิงที่ไม่สั่งแสดงผลใหม่
+ */
 // app/dashboard/teacher/profile/page.tsx
 "use client";
 
@@ -7,6 +13,7 @@ import { BookOpenText, Building2, GraduationCap, Mail, Pencil, Phone, Sparkles }
 import { createClient } from "@/utils/supabase/client";
 import { THAI_UNIVERSITIES } from "@/lib/universities";
 
+// supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
 const supabase = createClient();
 
 interface ProfileForm {
@@ -20,6 +27,7 @@ interface ProfileForm {
   faculty: string;
 }
 
+// EMPTY: ค่าเริ่มต้นของฟิลด์โปรไฟล์ ใช้แทนข้อความที่ยังไม่มีข้อมูล
 const EMPTY: ProfileForm = {
   full_name: "",
   avatar_url: "",
@@ -31,23 +39,38 @@ const EMPTY: ProfileForm = {
   faculty: "",
 };
 
+// fieldClass: คลาสตกแต่งร่วมของช่องกรอกในฟอร์ม
 const fieldClass = "w-full rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-[13.5px] text-[#0F1B3D] outline-none transition focus:border-[#3157D5]/50 focus:bg-white focus:ring-4 focus:ring-[#3157D5]/10";
+// labelClass: คลาสตกแต่งร่วมของป้ายชื่อช่องกรอก
 const labelClass = "mb-2 block text-[12px] font-bold text-slate-600";
 
+/** จัดการโหมดดูและแก้ไขโปรไฟล์ การอัปโหลดรูป และผลการบันทึก */
 export default function TeacherProfilePage(): ReactElement {
+  // router: ตัวควบคุมการเปลี่ยนหน้าและรีเฟรชข้อมูลผ่าน Next.js บนเบราว์เซอร์
   const router = useRouter();
+  // form: ข้อมูลฟอร์มที่กำลังแก้ไข โดยยังไม่ถือว่าเป็นค่าที่บันทึกสำเร็จ; setForm ใช้อัปเดตค่านี้
   const [form, setForm] = useState<ProfileForm>(EMPTY);
+  // profile: โปรไฟล์ที่โหลดหรือบันทึกสำเร็จล่าสุด ใช้แสดงผลและคืนค่าหากยกเลิกแก้ไข; setProfile ใช้อัปเดตค่านี้
   const [profile, setProfile] = useState<ProfileForm | null>(null);
+  // email: อีเมลบัญชีที่ใช้แสดงหรือกรอกเพื่อยืนยันตัวตน; setEmail ใช้อัปเดตค่านี้
   const [email, setEmail] = useState("");
+  // isEditing: สถานะเปิดฟอร์มแก้ไขแทนส่วนแสดงข้อมูลโปรไฟล์; setIsEditing ใช้อัปเดตค่านี้
   const [isEditing, setIsEditing] = useState(false);
+  // isLoading: สถานะกำลังอ่านข้อมูล ใช้สลับส่วนโหลดและเนื้อหาจริง; setIsLoading ใช้อัปเดตค่านี้
   const [isLoading, setIsLoading] = useState(true);
+  // isSaving: สถานะกำลังบันทึก ใช้แสดงข้อความรอและควบคุมปุ่มบันทึก; setIsSaving ใช้อัปเดตค่านี้
   const [isSaving, setIsSaving] = useState(false);
+  // isUploading: สถานะกำลังอัปโหลดรูปโปรไฟล์; setIsUploading ใช้อัปเดตค่านี้
   const [isUploading, setIsUploading] = useState(false);
+  // message: ข้อความผลลัพธ์ที่ใช้แสดงให้ผู้ใช้ทราบตามบริบทของส่วนนี้; setMessage ใช้อัปเดตค่านี้
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  // fileInputRef: อ้างถึงช่องเลือกไฟล์เพื่อเปิดตัวเลือกหรือรีเซ็ตค่าหลังอัปโหลด
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    /** อ่านโปรไฟล์ผู้ใช้แล้วเติมข้อมูลทั้งชุดที่แสดงและชุดที่ใช้แก้ไข */
     async function load() {
+      // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setMessage({ type: "error", text: "กรุณาเข้าสู่ระบบก่อนแก้ไขโปรไฟล์" });
@@ -56,6 +79,7 @@ export default function TeacherProfilePage(): ReactElement {
       }
       setEmail(user.email ?? "");
 
+      // data, error: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้ พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
       const { data, error } = await supabase
         .from("profiles")
         .select("full_name, avatar_url, headline, bio, phone, education, university, faculty")
@@ -63,6 +87,7 @@ export default function TeacherProfilePage(): ReactElement {
         .single();
 
       if (!error && data) {
+        // loadedProfile: ข้อมูลจากฐานข้อมูลที่แทนค่า null ด้วยข้อความว่างเพื่อใช้กับ input
         const loadedProfile = {
           full_name: data.full_name ?? "",
           avatar_url: data.avatar_url ?? "",
@@ -83,7 +108,9 @@ export default function TeacherProfilePage(): ReactElement {
     void load();
   }, []);
 
+  /** อัปโหลดรูปที่เลือกไปพื้นที่ avatars แล้วใส่ URL รูปลงในฟอร์ม */
   async function handleAvatarChange(e: ChangeEvent<HTMLInputElement>) {
+    // file: ไฟล์ที่ผู้ใช้เลือกจาก input เพื่อนำไปตรวจและอัปโหลด
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -99,10 +126,12 @@ export default function TeacherProfilePage(): ReactElement {
     setIsUploading(true);
     setMessage(null);
 
+    // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setIsUploading(false); return; }
 
     const ext = file.name.split(".").pop();
+    // filePath: เส้นทางจัดเก็บรูปโปรไฟล์ที่รวมรหัสผู้ใช้เพื่อแยกไฟล์ตามบัญชี
     const filePath = `${user.id}/avatar-${Date.now()}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
@@ -121,12 +150,14 @@ export default function TeacherProfilePage(): ReactElement {
     setIsUploading(false);
   }
 
+  /** บันทึกฟอร์มลง profiles และอัปเดต full_name ในข้อมูลผู้ใช้ของระบบยืนยันตัวตน */
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (isUploading) return;
     setIsSaving(true);
     setMessage(null);
 
+    // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       setMessage({ type: "error", text: "กรุณาเข้าสู่ระบบก่อนแก้ไขโปรไฟล์" });
@@ -134,6 +165,7 @@ export default function TeacherProfilePage(): ReactElement {
       return;
     }
 
+    // savedProfile, error: ผลบันทึกข้อมูลโปรไฟล์ผู้ใช้ พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
     const { data: savedProfile, error } = await supabase
       .from("profiles")
       .update({
@@ -160,6 +192,7 @@ export default function TeacherProfilePage(): ReactElement {
     const { error: authError } = await supabase.auth.updateUser({
       data: { full_name: savedProfile.full_name },
     });
+    // updatedProfile: ข้อมูลโปรไฟล์หลังบันทึกสำเร็จ ใช้ให้หน้าดูและฟอร์มตรงกัน
     const updatedProfile = { ...form, full_name: savedProfile.full_name ?? form.full_name.trim() };
     setProfile(updatedProfile);
     setForm(updatedProfile);
@@ -171,10 +204,12 @@ export default function TeacherProfilePage(): ReactElement {
     setIsSaving(false);
   }
 
+  /** แก้ค่าของฟิลด์ key ในฟอร์ม โดยเก็บฟิลด์อื่นไว้ตามเดิม */
   function update<K extends keyof ProfileForm>(key: K, value: ProfileForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  /** คืนข้อมูลฟอร์มจากโปรไฟล์ที่โหลดหรือบันทึกไว้ แล้วออกจากโหมดแก้ไข */
   function cancelEdit() {
     if (profile) setForm(profile);
     setMessage(null);

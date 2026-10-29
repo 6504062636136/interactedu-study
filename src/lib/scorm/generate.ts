@@ -85,6 +85,8 @@ function formatGeneratedSubchapterTitle(title: string, index: number): string {
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+// ศึกษา 3.2.2.13: helper ของเรารันบน Server เพื่อสร้างข้อความ JavaScript ที่จะไปรันใน Browser ภายใน SCO
+// สคริปต์ที่คืนมามีวิดีโอ/ควิซ/CMI: static quiz ตรวจในเครื่องแล้วส่งสถิติให้ API ตรวจซ้ำ; random quiz ที่ไม่มีเฉลยต้องรอ Server
 function buildLessonPlayerJs(//helper function อยู่บนสุดได้ ฟังชันนี้รับมา 5 พารา
   draft: LessonDraftRow,
   lessonId: string,
@@ -2896,6 +2898,8 @@ function buildManifestJson(
 // Main
 // ============================================================
 
+// ศึกษา 3.2.2.12: helper ฝั่ง Server รับ SupabaseClient, draftId=lesson_drafts.id และ lessonId=lessons.id จาก Action อนุมัติ
+// อ่าน draft approved ที่มีวิดีโอพร้อมคำถาม/หมุด/ช่วง → สร้างไฟล์กับ JSZip → R2 → metadata DB; คืน {packageUrl} หรือ {error}
 export async function generateScormPackage(
   supabase: SupabaseClient,
   draftId: string,
@@ -3038,6 +3042,7 @@ export async function generateScormPackage(
   }
 
   // 4. อัปโหลดเข้า Cloudflare R2 แยกไฟล์ ให้ตรงกับที่ /api/scorm/[...] proxy
+  // basePath คือ prefix ของ object ใน Cloudflare R2 แยกตาม courses.id/lessons.id; ไม่ใช่ bucket Supabase ของใบรับรอง
   const basePath = `scorm-packages/${courseId}/${lessonId}`;
 
   const filesToUpload: { name: string; content: string; contentType: string }[] = [
@@ -3137,6 +3142,7 @@ export async function generateScormPackage(
   const packageUrl = `${R2_PUBLIC_URL}/${basePath}/lesson.html`;
 
   // 5. บันทึก Record ลง Supabase (scorm_packages เดิม)
+  // R2 เก็บไฟล์จริง ส่วน scorm_packages เก็บ URL/version ผูก lesson_id; upsert onConflict=lesson_id ใช้บันทึกแพ็กเกจเดิมเมื่อ regenerate
   const { error: insertError } = await supabase
     .from("scorm_packages")
     .upsert(

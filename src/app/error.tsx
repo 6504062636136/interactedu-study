@@ -1,8 +1,14 @@
+/**
+ * หน้าที่ของไฟล์: หน้าสำรองเมื่อเกิดข้อผิดพลาดระหว่างแสดงผล พร้อมปุ่มลองโหลดเนื้อหาใหม่
+ * เส้นทาง: /
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ */
 "use client";
 
 import { useEffect } from "react";
 import Link from "next/link";
 
+/** รับ error เพื่อบันทึกข้อผิดพลาด และใช้ reset จาก Next.js เพื่อลองแสดงผลหน้านี้อีกครั้ง */
 export default function GlobalError({
   error,
   reset,

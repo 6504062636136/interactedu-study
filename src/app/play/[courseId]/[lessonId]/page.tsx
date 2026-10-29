@@ -1,3 +1,9 @@
+/**
+ * หน้าที่ของไฟล์: ห้องเรียน SCORM แบบเต็มหน้า จัดการการเล่นต่อ เมนูบทเรียน เอกสาร และการส่งความก้าวหน้า
+ * เส้นทาง: /play/[courseId]/[lessonId]
+ * เป็น Client Component เพื่อรองรับสถานะและการโต้ตอบบนเบราว์เซอร์
+ * useState เก็บค่าที่ทำให้หน้าจอแสดงผลใหม่เมื่อเปลี่ยน ส่วน useRef เก็บค่าอ้างอิงที่ไม่สั่งแสดงผลใหม่
+ */
 // src/app/play/[courseId]/[lessonId]/page.tsx
 'use client';
 
@@ -40,12 +46,14 @@ interface CourseMaterial {
   file_url: string;
 }
 
+/** ตรวจนามสกุลไฟล์ที่ส่วนเอกสารสามารถเปิดตัวอย่างในหน้าเรียนได้ */
 // เบราว์เซอร์ preview ให้ในตัวได้จริงๆ แค่ไฟล์กลุ่มนี้ (ผ่าน iframe/img) — .doc/.docx/.ppt/.pptx
 // เปิดในแท็บใหม่/ดาวน์โหลดเหมือนเดิม เพราะเบราว์เซอร์ไม่มี renderer ในตัวให้
 function isPreviewableFile(fileName: string): boolean {
   const lower = fileName.toLowerCase();
   return lower.endsWith('.pdf') || /\.(png|jpe?g|gif|webp|svg)$/.test(lower);
 }
+/** ตรวจว่าเอกสารเป็นไฟล์รูปภาพที่ควรแสดงด้วยองค์ประกอบรูปภาพหรือไม่ */
 function isImageFile(fileName: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg)$/.test(fileName.toLowerCase());
 }
@@ -58,11 +66,14 @@ interface CourseLessonRef {
   videoDurationSeconds?: number | null;
 }
 
+/** แปลงความยาววิดีโอเป็นข้อความชั่วโมงและนาทีสำหรับเมนูบทเรียน */
 // แปลงวินาทีเป็นป้ายเวลาแบบสั้น เช่น 3 m, 1 h 26 m — ให้ตรงกับที่โชว์รวมของคอร์สในหน้าอื่น
 function formatLessonDuration(seconds?: number | null): string | null {
   if (!seconds || seconds <= 0) return null;
   const totalMinutes = Math.round(seconds / 60);
+  // hours: จำนวนชั่วโมงเต็มของช่วงเวลาที่กำลังจัดรูปแบบ
   const hours = Math.floor(totalMinutes / 60);
+  // minutes: จำนวนนาทีที่ใช้ประกอบข้อความเวลาของฟังก์ชันนี้
   const minutes = totalMinutes % 60;
   if (hours > 0) return minutes > 0 ? `${hours} h ${minutes} m` : `${hours} h`;
   return `${Math.max(minutes, 1)} m`;
@@ -105,6 +116,7 @@ interface PriorScormState {
   lessonMode: 'normal' | 'browse';
 }
 
+/** ไล่รายการเมนู SCORM แบบซ้อนชั้น แล้วรวมเฉพาะรายการที่มี href เป็นลำดับเล่น */
 // เดินทุกกิ่งของเมนู แปลงเป็น flat list ตามลำดับ ไว้ใช้ทำปุ่มก่อนหน้า/ถัดไป
 function flattenPlayableItems(items: ScormMenuItem[]): ScormMenuItem[] {
   const result: ScormMenuItem[] = [];
@@ -117,6 +129,7 @@ function flattenPlayableItems(items: ScormMenuItem[]): ScormMenuItem[] {
   return result;
 }
 
+/** ปรับคำนำหน้าหัวข้อย่อยที่ระบบสร้างให้ใช้ลำดับแสดงผลที่สอดคล้องกัน */
 function formatGeneratedSubchapterTitle(title: string, index: number): string {
   const generatedPrefix = /^(?:บท|ช่วง|หัวข้อ(?:ย่อย)?)ที่\s*\d+/;
   return generatedPrefix.test(title.trim())
@@ -124,36 +137,53 @@ function formatGeneratedSubchapterTitle(title: string, index: number): string {
     : title;
 }
 
+/** ประกอบห้องเรียนตาม courseId และ lessonId พร้อมเชื่อม SCORM API เข้ากับ iframe และประวัติการเรียน */
+// ศึกษา 3.2.2.13: ผู้เรียนเปิด /play พร้อม courses.id/lessons.id; Client Component ของเราโหลด scorm-info/สถานะเดิมแล้วเปิด SCO ใน iframe
+// scorm-again ให้ Scorm12API/Scorm2004API เป็น runtime ฝั่ง Browser; เมื่อ commit ส่ง CMI ไป POST /api/scorm/tracking
 export default function StandaloneScormPlayer({ params }: PlayProps) {
+  // courseId, lessonId: รหัสคอร์สและบทเรียนจาก URL โดย use อ่านค่าจาก Promise ของ params ใน Client Component
   const { courseId, lessonId } = use(params);
+  // router: ตัวควบคุมการเปลี่ยนหน้าและรีเฟรชข้อมูลผ่าน Next.js บนเบราว์เซอร์
   const router = useRouter();
+  // iframeRef: อ้างถึง iframe ที่เปิดเนื้อหา SCORM เพื่อเชื่อม API และเข้าถึงวิดีโอภายใน
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  // scormVersion: รุ่นของแพ็กเกจที่กำหนดว่าจะสร้าง SCORM 1.2 API หรือ SCORM 2004 API; setScormVersion ใช้อัปเดตค่านี้
   const [scormVersion, setScormVersion] = useState<'1.2' | '2004' | null>(null);
   // [งานข้อ 07] 'generated' = แพ็กเกจของแพลตฟอร์มเอง, 'imported' = อัปโหลด .zip ของคนอื่น
   // ใช้กันไม่ให้ heuristic เดาชนิด SCO จากชื่อไฟล์ (ที่ผูกกับ convention ของ generator เราเอง)
   // ไปตีความเนื้อหาจริงของแพ็กเกจภายนอกผิด (เช่นโฟลเดอร์ quizzes/ ของเขาเอง)
   const [scormSource, setScormSource] = useState<'generated' | 'imported' | null>(null);
+  // currentPath: เส้นทางไฟล์ภายในแพ็กเกจของหัวข้อ SCORM ที่กำลังเปิด; setCurrentPath ใช้อัปเดตค่านี้
   const [currentPath, setCurrentPath] = useState<string | null>(null);
+  // manifest: โครงสร้างเมนูและข้อมูลแพ็กเกจ SCORM ที่อ่านจากเซิร์ฟเวอร์; setManifest ใช้อัปเดตค่านี้
   const [manifest, setManifest] = useState<ScormManifest | null>(null);
+  // courseTitle: ชื่อคอร์สที่โหลดจากข้อมูลห้องเรียนสำหรับแสดงในส่วนหัว; setCourseTitle ใช้อัปเดตค่านี้
   const [courseTitle, setCourseTitle] = useState<string | null>(null);
+  // lessonTitle: ชื่อบทเรียนที่โหลดจากเซิร์ฟเวอร์สำหรับแสดงเหนือเนื้อหา; setLessonTitle ใช้อัปเดตค่านี้
   const [lessonTitle, setLessonTitle] = useState<string | null>(null);
+  // loadError: ข้อความหรือสถานะผิดพลาดขณะอ่านข้อมูลสำหรับแสดงบนหน้า; setLoadError ใช้อัปเดตค่านี้
   const [loadError, setLoadError] = useState<string | null>(null);
+  // sidebarOpen: สถานะเปิดหรือปิดแถบเมนูข้างของห้องเรียน; setSidebarOpen ใช้อัปเดตค่านี้
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // เอกสารประกอบ
   const [materials, setMaterials] = useState<CourseMaterial[]>([]);
+  // materialsOpen: สถานะเปิดหรือปิดรายการเอกสารประกอบคอร์ส; setMaterialsOpen ใช้อัปเดตค่านี้
   const [materialsOpen, setMaterialsOpen] = useState(false);
   // เอกสารที่กำลังเปิดดูแบบ preview ในหน้านี้ (modal ฝัง iframe) — null = ไม่ได้เปิด
   const [previewMaterial, setPreviewMaterial] = useState<CourseMaterial | null>(null);
 
   // รายชื่อบทเรียนทั้งหมดในคอร์ส (ไว้สลับเลสสันโดยไม่ต้องออกจากห้องเรียน)
   const [courseLessons, setCourseLessons] = useState<CourseLessonRef[]>([]);
+  // lessonListOpen: สถานะยุบหรือขยายเมนูรายชื่อบทเรียน; setLessonListOpen ใช้อัปเดตค่านี้
   const [lessonListOpen, setLessonListOpen] = useState(true);
 
   // ความคืบหน้าราย SCO ของเลสสันปัจจุบัน
   const [completedScos, setCompletedScos] = useState<string[]>([]);
+  // videoCompleted: สถานะเรียนวิดีโอจบที่ใช้ประกอบการปลดล็อกและอนุญาตดูย้อนหลัง; setVideoCompleted ใช้อัปเดตค่านี้
   const [videoCompleted, setVideoCompleted] = useState(false);
+  // seekResumeSeconds: วินาทีที่เคยเรียนถึง ใช้กับตัวควบคุมการข้ามวิดีโอ; setSeekResumeSeconds ใช้อัปเดตค่านี้
   const [seekResumeSeconds, setSeekResumeSeconds] = useState(0);
 
   // true เมื่อ window.API/API_1484_11 ถูกตั้งค่าและโหลด CMI เดิมเสร็จแล้ว
@@ -163,9 +193,12 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
   // ความคืบหน้าของ item ที่กำลังเล่นอยู่ (0-1) จาก currentTime/duration ของ <video> ใน iframe
   const [currentItemFraction, setCurrentItemFraction] = useState(0);
 
+  // stopStudyTime: ฟังก์ชันจาก hook ที่สั่งหยุดและส่งเวลาเรียนเมื่อออกจากห้องเรียนหรือเปลี่ยนบท
   const stopStudyTime = useStudentStudyTime({ courseId, lessonId, scormSource, currentPath, apiReady, iframeRef });
   useCourseLearningStart(courseId, lessonId, apiReady && currentPath !== null);
+  // seekGuardItem: หัวข้อปัจจุบันจาก manifest ที่ใช้กำหนดขอบเขตการเล่นวิดีโอ
   const seekGuardItem = flattenPlayableItems(manifest?.items ?? []).find((item) => item.href === currentPath);
+  // canReplayFreely: ระบุว่าวิดีโอหรือหัวข้อนี้เรียนจบแล้ว จึงสามารถเลื่อนดูย้อนหลังได้อิสระ
   const canReplayFreely = videoCompleted || (currentPath !== null && completedScos.includes(currentPath));
   useVideoSeekGuard({
     courseId, lessonId, currentPath, apiReady, scormSource,
@@ -185,6 +218,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
 
   // --- Effect ที่ 1: ดึงข้อมูล scorm-info (รันใหม่ทุกครั้งที่ lessonId เปลี่ยน คือตอนสลับบทเรียน) ---
   useEffect(() => {
+    /** โหลดข้อมูลแพ็กเกจและความก้าวหน้าเดิม แล้วตั้งค่า manifest แหล่งแพ็กเกจ และตำแหน่งเริ่มเล่น */
     async function loadInfo() {
       try {
         setLoadError(null);
@@ -193,6 +227,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
         setVideoCompleted(false);
         setSeekResumeSeconds(0);
 
+        // infoResponse, progressResponse: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
         const [infoResponse, progressResponse] = await Promise.all([
           fetch(`/api/lessons/${lessonId}/scorm-info`),
           fetch(`/api/lessons/${lessonId}/progress`),
@@ -237,9 +272,13 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
   useEffect(() => {
     if (!scormVersion || !currentPath) return;
 
+    // cancelled: ธงยกเลิกงานเมื่อ effect ถูก cleanup เพื่อไม่ให้เชื่อม API ของหน้าที่เลิกใช้แล้ว
     let cancelled = false;
+    // apiInstance: อินสแตนซ์ SCORM ที่สร้างใน effect นี้ ใช้เริ่มใช้งานและเก็บกวาดเมื่อเลิกใช้
     let apiInstance: ScormApiLike | null = null;
+    // scormWindow: window ที่ระบุชนิดฟิลด์ API เพิ่มเติมสำหรับให้เนื้อหา SCORM เรียกใช้งาน
     const scormWindow = window as ScormWindow;
+    // is2004: ระบุว่าจะใช้ชื่อฟิลด์และ API ของ SCORM 2004 หรือของ SCORM 1.2
     const is2004 = scormVersion === '2004';
 
     setApiReady(false);
@@ -254,6 +293,9 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
     // แก้โดยเรียง fetch() ให้เป็นคิว (ยิงทีละอันตามลำดับที่ LMSCommit เกิดจริง) กันไม่ให้สลับกันเสร็จ
     let commitQueue: Promise<unknown> = Promise.resolve();
 
+    /** ผูกเหตุการณ์ Commit ของ SCORM เพื่อส่งสถานะ คะแนน และข้อมูล CMI เข้าคิวบันทึกบนเซิร์ฟเวอร์ */
+    // helper ใน Browser รับ runtime กับ flag เวอร์ชัน; อ่าน lessonStatus/suspendData/cmiData จาก SCO แล้วต่อคิว HTTP commit
+    // CMI snapshot ใช้กลับมาเรียนต่อ; API ตรวจ enrollment ก่อนบันทึก ส่วนคะแนน Final Exam ของ generated ใช้ quiz_attempts
     function setupCommitHook(scormInstance: ScormApiLike, isScorm2004: boolean) {
       scormInstance.on('LMSCommit', () => {
         const lessonStatus = isScorm2004
@@ -264,6 +306,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
           ? scormInstance.cmi.score?.raw
           : scormInstance.cmi.core?.score?.raw;
 
+        // suspendData: ข้อมูลพักการเรียนของ SCORM สำหรับคืนสถานะเดิมเมื่อกลับมาเรียน
         const suspendData = scormInstance.cmi.suspend_data;
 
         // เก็บ cmi ทั้งก้อน ไม่ใช่แค่ 3 ฟิลด์ข้างบน — scorm-again เขียน lesson_location,
@@ -282,6 +325,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
         // โฟลเดอร์ชื่อ quiz/quizzes เป็นเนื้อหาจริงของเขา SCO นั้นจะโดนบังคับให้ต้องได้สถานะ
         // 'passed' ถึงจะนับว่าจบ ซึ่งเนื้อหาทั่วไปไม่มีวันรายงานค่านี้ — ความคืบหน้าจะค้างตลอดกาล
         const scoType = scormSource !== 'imported' && currentPath?.includes('quiz') ? 'quiz' : 'lesson';
+        // thisCompleted: สถานะสำเร็จของหัวข้อที่กำลังบันทึก โดยควิซต้องผ่านและบทเรียนต้อง completed
         const thisCompleted = scoType === 'quiz' ? lessonStatus === 'passed' : lessonStatus === 'completed';
 
         // ต่อคิวไว้กับตัวก่อนหน้าเสมอ (ไม่ว่าตัวก่อนหน้าจะสำเร็จหรือ error ก็ยิงตัวถัดไปต่อได้ — แค่
@@ -320,6 +364,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
       });
     }
 
+    /** สร้างข้อมูลเริ่มต้น CMI จากประวัติเดิม โดยเลือกโครงสร้างให้ตรงกับ SCORM 1.2 หรือ 2004 */
     // แปลงสถานะกลางๆ ที่ได้จาก GET /api/scorm/tracking ให้เป็นชื่อ element ตามเวอร์ชันที่ใช้จริง
     // ใช้เป็น fallback เท่านั้น — ถ้ามี cmiData เต็มก้อน (งานข้อ 02) ให้ใช้อันนั้นแทน เพราะ
     // ตัวนี้สร้างจากแค่ 3 ฟิลด์ ไม่มี lesson_location/session_time/interactions/objectives
@@ -357,6 +402,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
       return json;
     }
 
+    /** สร้าง CMI สำหรับตัวตนผู้เรียน เครดิต และโหมดเรียนตามรุ่น SCORM */
     // [งานข้อ 08] ตัวตน + โหมดการเรียน — LMS ที่ conform ต้องป้อน student_id/student_name ให้ SCO
     // เสมอ และ credit/lesson_mode ต้องเป็น 'no-credit'/'browse' เวลาที่ครั้งนี้ไม่ถูกนับคะแนนจริง
     // (เซิร์ฟเวอร์ตัดสินมาแล้วจาก GET /api/scorm/tracking — ดูเหตุผลที่นั่น) ไม่ปล่อยเป็นค่า
@@ -381,6 +427,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
       return { core };
     }
 
+    /** ใส่ mastery_score จาก manifest ใน student_data สำหรับ SCORM 1.2 และคืนค่าว่างในรุ่น 2004 */
     // [งานข้อ 09] ส่งเกณฑ์ผ่านให้ SCO ตัดสินตัวเองผ่าน cmi.student_data.mastery_score (SCORM 1.2)
     // — มีเฉพาะแพ็กเกจ 'generated' ที่ generator ฝัง masteryScore ไว้ในตัว manifest JSON เท่านั้น
     // (แพ็กเกจ imported ไม่มีค่านี้ในสิ่งที่เราเก็บ — เราไม่รู้เกณฑ์ที่เจ้าของแพ็กเกจตั้งใจไว้จริง
@@ -430,8 +477,10 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
       const masteryScoreJson = buildMasteryScoreCmi();
 
       if (prior) {
+        // hasFullCmiSnapshot: ระบุว่ามีชุดข้อมูล CMI เดิมครบพอให้ใช้เป็นฐานแทนการสร้างค่าเริ่มต้น
         const hasFullCmiSnapshot =
           prior.cmiData && typeof prior.cmiData === 'object' && Object.keys(prior.cmiData).length > 0;
+        // baseCmiJson: ข้อมูล CMI ฐานที่เลือกจาก snapshot เดิมหรือสร้างจากสถานะเดิม
         const baseCmiJson = hasFullCmiSnapshot ? (prior.cmiData as Record<string, unknown>) : buildCmiJson(prior);
 
         // [บั๊กที่เจอตอนไล่ตรวจข้อ 20] entry ที่ติดมาใน cmi_data snapshot ของรอบก่อน (กรณี
@@ -538,6 +587,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
 
   // --- Effect ที่ 3: ดึงเอกสารประกอบ ---
   useEffect(() => {
+    /** อ่านรายการเอกสารประกอบของคอร์สจาก API เพื่อนำมาแสดงในห้องเรียน */
     async function loadMaterials() {
       try {
         const res = await fetch(`/api/courses/${courseId}/materials`);
@@ -553,6 +603,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
 
   // --- Effect ที่ 4: ดึงรายชื่อบทเรียนทั้งหมดในคอร์ส (โหลดครั้งเดียวตอนเข้าคอร์ส ไม่ต้องรันซ้ำตอนสลับเลสสัน) ---
   useEffect(() => {
+    /** อ่านลำดับบทเรียนในคอร์สจาก API เพื่อใช้เมนูและปุ่มก่อนหน้า/ถัดไป */
     async function loadCourseLessons() {
       try {
         const res = await fetch(`/api/courses/${courseId}/lessons`);
@@ -575,8 +626,10 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
     if (!iframe) return;
 
     let video: HTMLVideoElement | null = null;
+    // cleanupVideoListeners: ฟังก์ชันถอด event listeners ของวิดีโอเดิมเมื่อ iframe เปลี่ยนหรือปิดหน้า
     let cleanupVideoListeners: (() => void) | undefined;
 
+    /** ค้นหาวิดีโอใน iframe และติดตัวฟังเวลาเล่นเพื่อคำนวณความก้าวหน้าของหัวข้อปัจจุบัน */
     function attachVideo() {
       try {
         const doc = iframe?.contentDocument;
@@ -586,13 +639,17 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
       }
       if (!video) return;
 
+      // lastReported: สัดส่วนการเล่นที่ส่งเข้า state ครั้งล่าสุด เพื่อลดการอัปเดตซ้ำโดยไม่จำเป็น
       let lastReported = -1;
+      /** คำนวณสัดส่วนเวลาเล่นภายในช่วงของหัวข้อ แล้วอัปเดตสถานะเมื่อค่าเปลี่ยน */
       const update = () => {
         if (!video || !video.duration || Number.isNaN(video.duration)) return;
         const activeItem = flattenPlayableItems(manifest?.items ?? []).find((item) => item.href === currentPath);
         const start = activeItem?.startSeconds ?? 0;
         const end = Math.min(activeItem?.endSeconds ?? video.duration, video.duration);
+        // playableDuration: ความยาวช่วงที่เล่นได้จริงของหัวข้อ โดยมีค่าขั้นต่ำเพื่อป้องกันหารด้วยศูนย์
         const playableDuration = Math.max(0.001, end - start);
+        // fraction: สัดส่วนเวลาเล่นภายในหัวข้อที่จำกัดค่าไว้ระหว่าง 0 ถึง 1
         const fraction = Math.min(1, Math.max(0, (video.currentTime - start) / playableDuration));
         if (Math.abs(fraction - lastReported) >= 0.01) {
           lastReported = fraction;
@@ -611,6 +668,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
 
     attachVideo();
 
+    /** ถอดตัวฟังวิดีโอเดิมแล้วผูกใหม่เมื่อ iframe โหลดเนื้อหาเสร็จ */
     const onLoad = () => {
       cleanupVideoListeners?.();
       attachVideo();
@@ -650,6 +708,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
     }));
   }, [manifest, completedScos, scormSource, videoCompleted]);
 
+  // currentIndex: ตำแหน่งหัวข้อที่กำลังเปิดใน flatItems หรือ -1 เมื่อยังหาไม่พบ
   const currentIndex = flatItems.findIndex((i) => i.href === currentPath);
   const currentItem = currentIndex >= 0 ? flatItems[currentIndex] : null;
   const prevItem = currentIndex > 0 ? flatItems[currentIndex - 1] : null;
@@ -660,6 +719,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
     const completedCount = flatItems.filter((i) => i.completed).length;
   // ถ้า item ปัจจุบันจบแล้ว ไม่ต้องบวก fraction ซ้อน (currentItemFraction อาจค้างที่ 1 หรือ video ยังเล่นซ้ำอยู่)
   const isCurrentItemCompleted = currentItem?.completed ?? false;
+  // progressUnits: จำนวนหัวข้อที่จบแล้ว บวกสัดส่วนของหัวข้อปัจจุบันที่ยังไม่จบ
   const progressUnits = completedCount + (isCurrentItemCompleted ? 0 : currentItemFraction);
   const progressPercent =
     flatItems.length > 0 ? Math.round((progressUnits / flatItems.length) * 100) : 0;
@@ -670,6 +730,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
   // รักษาโครงสร้างแม่-ลูกของเมนูไว้ เพื่อให้ช่วงวิดีโอเป็นหัวข้อย่อยใต้บทเรียน
   // พร้อมรองรับ manifest รุ่นก่อนที่เคยเก็บช่วงทั้งหมดไว้ระดับบนสุด
   const lessonItems = useMemo(() => {
+    /** เติมสถานะเรียนจบและปรับหัวข้อในโครงสร้างเมนู โดยคงรายการของแพ็กเกจนำเข้าไว้ */
     const decorateItems = (items: ScormMenuItem[]): ScormMenuItem[] =>
       items
         .filter((item) => {
@@ -724,11 +785,13 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
     );
   }, [flatItems]);
 
+  // currentLessonSubItems: หัวข้อย่อยที่ใช้แสดงใต้บทเรียนปัจจุบัน โดยรองรับ manifest ที่มีโหนดครอบหนึ่งชั้น
   const currentLessonSubItems = useMemo(() => {
     if (lessonItems.length === 1) return lessonItems[0].children ?? [];
     return lessonItems;
   }, [lessonItems]);
 
+  // currentLessonCompleted: ระบุว่ามีหัวข้อที่เล่นได้และทุกหัวข้อในบทเรียนปัจจุบันเรียนจบแล้ว
   const currentLessonCompleted =
     flatItems.length > 0 && flatItems.every((item) => item.completed);
 
@@ -741,6 +804,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
   );
 
 
+  /** ตรวจว่าสามารถเปิดหัวข้อเป้าหมายได้ตามลำดับที่ปลดล็อก โดยแพ็กเกจนำเข้าเปิดได้อิสระ */
   function canSelectItem(href: string | null): boolean {
     if (!href || scormSource !== 'generated') return true;
     const targetIndex = flatItems.findIndex((item) => item.href === href);
@@ -748,12 +812,14 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
     return flatItems.slice(Math.max(0, currentIndex), targetIndex).every((item) => item.completed);
   }
 
+  /** ตรวจสิทธิ์ตามลำดับหัวข้อก่อนเปลี่ยนเส้นทางเนื้อหาที่เล่นใน iframe */
   function handleSelectItem(href: string | null) {
     if (!href || href === currentPath || !canSelectItem(href)) return;
     setCurrentPath(href);
     if (window.innerWidth < 1024) setSidebarOpen(false);
   }
 
+  /** ส่งผู้เรียนไปห้องเรียนของ targetLessonId หลังสั่งหยุดการจับเวลาเรียนปัจจุบัน */
   // สลับไปเลสสันอื่นในคอร์ส — เปลี่ยน route ทำให้ effect ที่ผูกกับ lessonId รันใหม่ทั้งหมด
   async function handleSelectLesson(targetLessonId: string) {
     if (targetLessonId === lessonId) return;
@@ -761,6 +827,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
     router.push(`/play/${courseId}/${targetLessonId}`);
   }
 
+  /** หยุดการจับเวลาเรียนแล้วกลับหน้าภาพรวมคอร์สของผู้เรียน */
   async function handleExit() {
     await stopStudyTime();
     router.push(`/dashboard/student/courses/${courseId}`);
@@ -771,15 +838,18 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
     courseLessonIndex >= 0 && courseLessonIndex < courseLessons.length - 1
       ? courseLessons[courseLessonIndex + 1]
       : null;
+  // nextLocked: ระบุว่าปุ่มถัดไปต้องล็อกเพราะหัวข้อหรือบทเรียนก่อนหน้ายังเรียนไม่ครบ
   const nextLocked = scormSource === 'generated' && (
     nextItem ? !canSelectItem(nextItem.href) : Boolean(nextCourseLesson && !currentLessonCompleted)
   );
 
+  /** เปิดหัวข้อก่อนหน้า หรือย้อนกลับบทเรียนก่อนหน้าเมื่ออยู่ต้นบทเรียนปัจจุบัน */
   function handlePrevious(): void {
     if (prevItem) handleSelectItem(prevItem.href);
     else if (previousCourseLesson) handleSelectLesson(previousCourseLesson.id);
   }
 
+  /** เปิดหัวข้อหรือบทเรียนถัดไปเมื่อผ่านเงื่อนไขการปลดล็อก */
   function handleNext(): void {
     if (nextLocked) return;
     if (nextItem) handleSelectItem(nextItem.href);
@@ -787,6 +857,7 @@ export default function StandaloneScormPlayer({ params }: PlayProps) {
     else handleExit();
   }
 
+  /** สร้างเมนู SCORM แบบซ้อนชั้น โดย depth กำหนดการเยื้องและ items เป็นรายการในชั้นนั้น */
   function renderMenuItems(items: ScormMenuItem[], depth = 0) {
     return (
       <ul className={depth === 0 ? '' : 'ml-3 border-l border-white/10 pl-2.5'}>

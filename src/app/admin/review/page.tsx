@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: หน้ารายการฉบับร่างบทเรียนที่รอผู้ดูแลตรวจ
+ * เส้นทาง: /admin/review
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 // import type { ReactElement } from "react";
 // import Link from "next/link";
 // import { redirect } from "next/navigation";
@@ -122,6 +127,7 @@ interface RawRow {
   lessons: { title: string; courses: { title: string } | { title: string }[] } | null;
 }
 
+/** แปลงวันเวลาที่รับมาเป็นข้อความวันที่ตามรูปแบบที่หน้านี้กำหนด */
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("th-TH", {
     year: "numeric",
@@ -132,7 +138,9 @@ function formatDate(iso: string): string {
   });
 }
 
+/** ตรวจผู้ใช้และบทบาท แล้วโหลดฉบับร่างที่ส่งมาตรวจพร้อมข้อมูลคอร์ส */
 export default async function AdminReviewListPage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
   // Step 1: เช็ค User Auth
@@ -156,8 +164,10 @@ export default async function AdminReviewListPage(): Promise<ReactElement> {
 
   const data = draftsRes.data;
 
+  // drafts: ฉบับร่างที่จัดรูปข้อมูลชื่อบทเรียน คอร์ส และผู้ส่งสำหรับแสดงในตาราง
   const drafts = ((data ?? []) as unknown as RawRow[]).map((row) => {
     const lesson = row.lessons;
+    // course: ข้อมูลคอร์สที่ผูกกับรายการหรือหน้าที่กำลังแสดง ซึ่งอาจเป็น null หากอ่านไม่พบ
     const course = lesson ? (Array.isArray(lesson.courses) ? lesson.courses[0] : lesson.courses) : null;
     return {
       id: row.id,

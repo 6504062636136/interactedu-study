@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แดชบอร์ดแอดมิน แสดงสถิติผู้ใช้ คอร์ส ผู้สมัครล่าสุด และคอร์สที่รอตรวจ
+ * เส้นทาง: /dashboard/admin
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, BookOpen, CheckCircle2, ClipboardCheck, GraduationCap, Plus, UsersRound, type LucideIcon } from "lucide-react";
 import type { ReactElement } from "react";
@@ -20,11 +25,14 @@ type PendingCourse = {
   created_by: string | null;
 };
 
+/** เปรียบเทียบเวลาที่รับมากับปัจจุบัน แล้วแสดงระยะเวลาย้อนหลังเป็นภาษาไทย */
 function relativeTimeThai(iso: string): string {
   const diffMs = Math.max(0, Date.now() - new Date(iso).getTime());
+  // minutes: จำนวนนาทีที่ใช้ประกอบข้อความเวลาของฟังก์ชันนี้
   const minutes = Math.floor(diffMs / 60000);
   if (minutes < 1) return "เมื่อสักครู่";
   if (minutes < 60) return `${minutes} นาทีที่แล้ว`;
+  // hours: จำนวนชั่วโมงเต็มของช่วงเวลาที่กำลังจัดรูปแบบ
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours} ชม.ที่แล้ว`;
   const days = Math.floor(hours / 24);
@@ -32,10 +40,12 @@ function relativeTimeThai(iso: string): string {
   return new Date(iso).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" });
 }
 
+/** ย่อชื่อผู้ใช้เป็นตัวอักษรสำหรับรูปแทนเมื่อไม่มีภาพโปรไฟล์ */
 function initials(name: string | null): string {
   return name?.trim().charAt(0).toUpperCase() || "?";
 }
 
+/** แสดงการ์ดสถิติ โดย label เป็นชื่อ value เป็นค่า และ icon/tone กำหนดไอคอนกับสี */
 function StatCard({ label, value, detail, href, icon: Icon, tone }: { label: string; value: number; detail: string; href: string; icon: LucideIcon; tone: string }): ReactElement {
   return (
     <Link href={href} className="group flex min-h-40 flex-col justify-between rounded-[22px] border border-slate-200/80 bg-white p-4 shadow-[0_8px_30px_rgba(15,27,61,0.035)] transition-all hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_16px_35px_rgba(15,27,61,0.09)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3157D5] sm:p-5">
@@ -52,6 +62,7 @@ function StatCard({ label, value, detail, href, icon: Icon, tone }: { label: str
   );
 }
 
+/** แสดงชื่อบทบาทภาษาไทยและสีป้ายของผู้เรียน ผู้สอน หรือแอดมิน */
 function RoleBadge({ role }: { role: ProfileRole }): ReactElement {
   const styles: Record<ProfileRole, string> = {
     student: "bg-blue-50 text-blue-700",
@@ -62,6 +73,7 @@ function RoleBadge({ role }: { role: ProfileRole }): ReactElement {
   return <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${styles[role]}`}>{labels[role]}</span>;
 }
 
+/** แสดงข้อความเมื่อยังไม่มีรายการ พร้อมคำแนะนำหรือทางไปขั้นตอนถัดไปตามหน้านี้ */
 function EmptyState({ title, description }: { title: string; description: string }): ReactElement {
   return (
     <div className="flex min-h-48 flex-col items-center justify-center px-4 py-9 text-center">
@@ -72,8 +84,11 @@ function EmptyState({ title, description }: { title: string; description: string
   );
 }
 
+/** โหลดจำนวนผู้ใช้และคอร์สพร้อมรายการล่าสุด แล้วเตรียมข้อมูลสรุปให้แดชบอร์ด */
 export default async function AdminDashboardPage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // usersRes, studentsRes, teachersRes, coursesRes, publishedRes, pendingRes, recentUsersRes, pendingCoursesRes: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [usersRes, studentsRes, teachersRes, coursesRes, publishedRes, pendingRes, recentUsersRes, pendingCoursesRes] =
     await Promise.all([
       supabase.from("profiles").select("id", { count: "exact", head: true }),
@@ -91,19 +106,24 @@ export default async function AdminDashboardPage(): Promise<ReactElement> {
         .limit(6),
     ]);
 
+  // pendingCourseRows: ข้อมูลคอร์สที่รอตรวจซึ่งยังใช้ชื่อฟิลด์ตามฐานข้อมูล
   const pendingCourseRows = (pendingCoursesRes.data ?? []) as PendingCourse[];
+  // creatorIds: รหัสผู้สร้างคอร์สที่ไม่ซ้ำกันสำหรับอ่านชื่อมาแสดง
   const creatorIds = [...new Set(pendingCourseRows.map((course) => course.created_by).filter((id): id is string => Boolean(id)))];
   const creatorsRes = creatorIds.length
     ? await supabase.from("profiles").select("id, full_name").in("id", creatorIds)
     : { data: [], error: null };
+  // creatorNames: จับคู่รหัสผู้สร้างคอร์สกับชื่อ เพื่อนำไปเติมในรายการคอร์ส
   const creatorNames = new Map((creatorsRes.data ?? []).map((profile) => [profile.id, profile.full_name ?? "ไม่ระบุชื่อ"]));
 
+  // pendingCourses: คอร์สรอตรวจที่เติมชื่อผู้สร้างและแปลงรูปแบบสำหรับแถวสรุปแล้ว
   const pendingCourses = pendingCourseRows.map((course) => ({
     id: course.id,
     title: course.title,
     instructorName: course.created_by ? creatorNames.get(course.created_by) ?? "ไม่ระบุชื่อ" : "ไม่ระบุชื่อ",
     createdAt: course.created_at,
   }));
+  // recentUsers: ผู้ใช้ล่าสุดที่นำมาแสดงในแดชบอร์ด
   const recentUsers = (recentUsersRes.data ?? []) as RecentUser[];
   const errors = [usersRes.error, studentsRes.error, teachersRes.error, coursesRes.error, publishedRes.error, pendingRes.error, recentUsersRes.error, pendingCoursesRes.error, creatorsRes.error].filter(Boolean);
 
@@ -115,6 +135,7 @@ export default async function AdminDashboardPage(): Promise<ReactElement> {
     published: publishedRes.count ?? 0,
     pending: pendingRes.count ?? 0,
   };
+  // publishedPercent: สัดส่วนคอร์สที่เผยแพร่แล้วเทียบกับคอร์สทั้งหมดของข้อมูลชุดนี้
   const publishedPercent = stats.courses ? Math.round((stats.published / stats.courses) * 100) : 0;
 
   return (

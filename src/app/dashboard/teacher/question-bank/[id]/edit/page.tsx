@@ -1,18 +1,29 @@
+/**
+ * หน้าที่ของไฟล์: เตรียมข้อมูลสำหรับแก้ไขคำถามในคลังตามรหัสที่เลือก
+ * เส้นทาง: /dashboard/teacher/question-bank/[id]/edit
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import QuestionBankForm from "@/components/teacher/QuestionBankForm";
 
+/** โหลดคำถาม ตัวเลือก แท็ก และบทเรียน แล้วตรวจสิทธิ์ก่อนส่งค่าเริ่มต้นให้ฟอร์ม */
 export default async function EditQuestionBankPage({ params }: { params: Promise<{ id: string }> }): Promise<ReactElement> {
+  // id: ค่ารหัสหรือ slug จากส่วนเส้นทาง URL โดยรอ params ของ Next.js ก่อนใช้งาน
   const { id } = await params;
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/login?redirect=/dashboard/teacher/question-bank/${id}/edit`);
 
+  // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (profile?.role !== "teacher" && profile?.role !== "admin") redirect("/");
 
+  // question, lessonsData: ผลของงานอ่านข้อมูลที่เริ่มพร้อมกัน โดยเรียงตามคำขอใน Promise.all
   const [{ data: question }, { data: lessonsData }] = await Promise.all([
     supabase
       .from("question_bank")
@@ -29,6 +40,7 @@ export default async function EditQuestionBankPage({ params }: { params: Promise
   if (!question) notFound();
   if (profile?.role !== "admin" && question.owner_teacher_id !== user.id) redirect("/dashboard/teacher/question-bank");
 
+  // lessons: บทเรียนที่ใช้แสดงหรือเป็นฐานคำนวณในส่วนนี้
   const lessons = (lessonsData ?? []).map((lesson) => ({
     id: lesson.id,
     courseId: lesson.course_id,
@@ -40,6 +52,7 @@ export default async function EditQuestionBankPage({ params }: { params: Promise
     title: (lesson.title as string | null)?.trim() || `บทที่ ${lesson.order_index + 1}`,
   }));
 
+  // initialData: ข้อมูลคำถาม ตัวเลือก เฉลย และแท็กที่จัดรูปแบบสำหรับเปิดฟอร์มแก้ไข
   const initialData = {
     questionText: question.question_text,
     explanation: question.explanation,

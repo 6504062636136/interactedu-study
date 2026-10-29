@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: โหลดคอร์สที่เผยแพร่และสิทธิ์ของผู้ใช้ แล้วส่งให้หน้าค้นหาและกรองคอร์ส
+ * เส้นทาง: /courses
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import { hasStartedLearning, isCourseInLibrary, loadLearningEnrollments, type LearningEnrollment } from "@/lib/courses/learning-enrollment";
 import { loadSavedCourseEnrollments } from "@/lib/courses/course-library";
 // app/courses/page.tsx
@@ -9,6 +14,7 @@ import ProfileDropdown from "@/components/ProfileDropdown";
 import CoursesExplorer, { type ExplorerCourse } from "@/components/CoursesExplorer";
 import AppBrand from "@/components/AppBrand";
 
+// navLinks: รายการชื่อเมนูและเส้นทางลิงก์สำหรับแถบนำทาง
 const navLinks: { label: string; href: string }[] = [
   { label: "คอร์สทั้งหมด", href: "/courses" },
   { label: "Interact Edu Plus", href: "/membership" },
@@ -16,6 +22,7 @@ const navLinks: { label: string; href: string }[] = [
   { label: "คอร์สฟรี", href: "/courses?price=free" },
 ];
 
+/** แสดงแถบนำทางหลักและข้อมูลโปรไฟล์ โดยรับชื่อ รูป และวันหมดอายุ Plus มาแสดง */
 function Navbar({ displayName, avatarUrl, plusExpiresAt }: { displayName: string | null; avatarUrl: string | null; plusExpiresAt: string | null }): ReactElement {
   return (
     <header className="app-topbar sticky top-0 z-50">
@@ -77,6 +84,7 @@ function Navbar({ displayName, avatarUrl, plusExpiresAt }: { displayName: string
   );
 }
 
+/** แสดงหัวเรื่องและคำแนะนำเหนือรายการค้นหาคอร์ส */
 function ExplorerHero(): ReactElement {
   return (
     <section className="relative overflow-hidden bg-[#0F1B3D] pt-16 pb-28 lg:pt-20 lg:pb-32">
@@ -98,6 +106,7 @@ function ExplorerHero(): ReactElement {
   );
 }
 
+/** แสดงส่วนท้ายของหน้าพร้อมลิงก์ข้อมูลและนโยบายของเว็บไซต์ */
 function Footer(): ReactElement {
   return (
     <footer className="border-t border-[#0F1B3D]/[0.06] bg-white">
@@ -118,27 +127,35 @@ function Footer(): ReactElement {
   );
 }
 
+/** อ่านตัวกรองราคาจาก URL โหลดคอร์สและการลงทะเบียน แล้วส่งข้อมูลให้ CoursesExplorer */
 export default async function CoursesPage({
   searchParams,
 }: {
   searchParams: Promise<{ price?: string }>;
 }): Promise<ReactElement> {
+  // price: ค่าจาก query string สำหรับตัวกรอง ข้อความผลลัพธ์ หรือโหมดแก้ไขของหน้า
   const { price } = await searchParams;
+  // initialFreeOnly: เปิดตัวกรองคอร์สฟรีตั้งแต่เข้าหน้า เมื่อ URL มี price=free
   const initialFreeOnly = price === "free";
 
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
 
+  // user: ผลตรวจผู้ใช้จากเซสชันปัจจุบัน ก่อนอ่านหรือบันทึกข้อมูลเฉพาะบัญชี
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // profile: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profile } = user
     ? await supabase.from("profiles").select("avatar_url").eq("id", user.id).maybeSingle()
     : { data: null };
 
+  // displayName: ชื่อที่ใช้แสดง โดยเลือกจากโปรไฟล์หรือข้อมูลบัญชีและมีชื่อสำรองเมื่อไม่มีข้อมูล
   const displayName = user
     ? (user.user_metadata?.full_name as string | undefined) ?? user.email?.split("@")[0] ?? "ผู้ใช้"
     : null;
+  // plusExpiresAt: วันหมดอายุ Plus ที่มีผลใช้งานของผู้ใช้ หรือ null เมื่อไม่มีสมาชิกที่ใช้งานอยู่
   const plusExpiresAt = user ? await getActivePlusExpiry(supabase, user.id) : null;
 
   // ดึงคอร์สที่เผยแพร่แล้วทั้งหมด — กรอง/ค้นหาฝั่ง client ผ่าน CoursesExplorer
@@ -162,18 +179,25 @@ export default async function CoursesPage({
   // เช็คว่าคอร์สไหนที่ user คนนี้ลงทะเบียนอนุมัติแล้วบ้าง เอาไว้สลับปุ่ม "ลงทะเบียน" เป็น
   // "เข้าเรียนต่อ" ในการ์ดคอร์ส — ไม่ต้องล็อกอินก็ยังดูรายการคอร์สได้ตามปกติ แค่ enrolledCourseIds ว่าง
   let enrolledCourseIds: string[] = [];
+  // accessibleCourseIds: รหัสคอร์สที่มีสิทธิ์เข้าเรียนในขณะนี้ แม้บางคอร์สยังไม่ได้เก็บเข้าคลัง
   let accessibleCourseIds: string[] = [];
+  // startedCourseIds: รหัสคอร์สที่ตรวจพบว่าเริ่มเรียนแล้ว เพื่อเลือกข้อความและปุ่มเรียนต่อ
   let startedCourseIds: string[] = [];
+  // membershipCourseIds: รหัสคอร์สที่สิทธิ์เข้าเรียนผูกกับคำสั่งซื้อสมาชิก Plus
   let membershipCourseIds: string[] = [];
+  // savedCourseIds: รหัสคอร์สที่ผู้ใช้บันทึกเข้าคลังแล้ว
   let savedCourseIds: string[] = [];
+  // savingAvailable: ระบุว่าระบบคลังคอร์สรองรับการบันทึกคอร์สในฐานข้อมูลชุดนี้หรือไม่
   let savingAvailable = false;
   if (user) {
+    // enrollmentRows: ผลอ่านข้อมูลการลงทะเบียน
     const { data: enrollmentRows } = await loadLearningEnrollments((includeStart) => supabase
       .from("enrollments")
       .select(`id, course_id, membership_order_id, ${includeStart ? "learning_started_at, " : ""}scorm_tracking(lesson_id, last_accessed, video_completed, lesson_status, completed_scos, cmi_data), student_study_time(total_seconds)`)
       .eq("student_id", user.id)
       .eq("status", "approved")
       .or(`access_expires_at.is.null,access_expires_at.gt.${new Date().toISOString()}`));
+    // library: ผลโหลดคลังคอร์สที่บันทึกไว้ ใช้แยกการเก็บคอร์สออกจากสิทธิ์ที่ได้ด้วยสมาชิก
     const library = await loadSavedCourseEnrollments(supabase, user.id);
     savingAvailable = library.ready;
     const rows = (enrollmentRows ?? []) as unknown as (LearningEnrollment & { id: string; course_id: string })[];
@@ -184,6 +208,7 @@ export default async function CoursesPage({
     savedCourseIds = rows.filter((row) => library.enrollmentIds.has(row.id)).map((e) => e.course_id);
   }
 
+  // explorerCourses: รายการคอร์สที่จัดรูปแบบความยาววิดีโอและจำนวนบทเรียนสำหรับ CoursesExplorer
   const explorerCourses: ExplorerCourse[] = (courses ?? []).map((course) => ({
     id: course.id,
     title: course.title,

@@ -1,3 +1,8 @@
+/**
+ * หน้าที่ของไฟล์: แสดงรายการใบประกาศนียบัตรทั้งหมดสำหรับแอดมิน
+ * เส้นทาง: /dashboard/admin/certificates
+ * เป็น Server Component ที่ Next.js ประมวลผลฝั่งเซิร์ฟเวอร์
+ */
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
@@ -14,17 +19,23 @@ interface CertificateRow {
   courses: { title: string } | null;
 }
 
+/** โหลดใบประกาศนียบัตรและชื่อผู้เรียน แล้วแสดงรายการพร้อมจำนวนที่ออกแล้ว */
 export default async function AdminCertificatesPage(): Promise<ReactElement> {
+  // supabase: ไคลเอนต์ Supabase ของบริบทนี้ ใช้อ่านเซสชันและรับส่งข้อมูลกับฐานข้อมูล
   const supabase = await createClient();
+  // certificatesData, error: ผลอ่านข้อมูลใบประกาศนียบัตร พร้อมข้อผิดพลาดที่ต้องตรวจเมื่อคำขอไม่สำเร็จ
   const { data: certificatesData, error } = await supabase
     .from("certificates")
     .select("id, certificate_no, user_id, course_id, score_percentage, pass_percentage, status, issued_at, courses(title)")
     .order("issued_at", { ascending: false });
+  // certificates: รายการใบประกาศนียบัตรที่อ่านมาเพื่อแสดงตามขอบเขตผู้ใช้ของหน้านี้
   const certificates = (certificatesData ?? []) as unknown as CertificateRow[];
   const userIds = [...new Set(certificates.map((certificate) => certificate.user_id))];
+  // profiles: ผลอ่านข้อมูลโปรไฟล์ผู้ใช้
   const { data: profiles } = userIds.length
     ? await supabase.from("profiles").select("id, full_name").in("id", userIds)
     : { data: [] };
+  // names: จับคู่รหัสผู้เรียนกับชื่อสำหรับแสดงเจ้าของใบประกาศนียบัตร
   const names = new Map((profiles ?? []).map((profile) => [profile.id, profile.full_name ?? "ไม่ระบุชื่อ"]));
   const issuedCount = certificates.filter((certificate) => certificate.status === "issued").length;
 

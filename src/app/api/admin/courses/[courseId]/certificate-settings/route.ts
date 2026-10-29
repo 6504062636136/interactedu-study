@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+// ศึกษา 3.2.2.15: helper ฝั่ง Server รับ courses.id คืน client/course หรือ response error; URL มี admin แต่อนุญาตครูที่ created_by ตรง user.id ด้วย
 async function authorizeCourseSettings(courseId: string) {
   const supabase = await createClient();
   const {
@@ -36,6 +37,7 @@ export async function GET(
   return NextResponse.json({ settings: authorization.course });
 }
 
+// CertificateSettingsForm ส่งค่าที่แก้ไขผ่าน PATCH; ตรวจชนิด/ความยาว/เกณฑ์ 0–100 แล้ว update courses.certificate_* คืน settings หรือ HTTP error
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ courseId: string }> }
